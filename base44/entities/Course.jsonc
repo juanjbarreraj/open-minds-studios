@@ -1,0 +1,40 @@
+{
+  "name": "Course",
+  "type": "object",
+  "properties": {
+    "course_code": {
+      "type": "string",
+      "title": "Course Code"
+    },
+    "course_name": {
+      "type": "string",
+      "title": "Course Name"
+    }
+  },
+  "required": [
+    "course_code",
+    "course_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "created_by": {
+        "$exists": true
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

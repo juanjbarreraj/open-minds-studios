@@ -1,0 +1,79 @@
+{
+  "name": "Booking",
+  "type": "object",
+  "properties": {
+    "tutor_id": {
+      "type": "string",
+      "title": "Tutor ID"
+    },
+    "student_first_name": {
+      "type": "string",
+      "title": "Student First Name"
+    },
+    "student_last_name": {
+      "type": "string",
+      "title": "Student Last Name"
+    },
+    "student_email": {
+      "type": "string",
+      "title": "Student Email"
+    },
+    "student_phone": {
+      "type": "string",
+      "title": "Student Phone"
+    },
+    "course_id": {
+      "type": "string",
+      "title": "Course ID"
+    },
+    "assignment_description": {
+      "type": "string",
+      "title": "Assignment Description"
+    },
+    "preferred_day": {
+      "type": "string",
+      "title": "Preferred Day"
+    },
+    "preferred_start_time": {
+      "type": "string",
+      "title": "Preferred Start Time"
+    },
+    "preferred_end_time": {
+      "type": "string",
+      "title": "Preferred End Time"
+    },
+    "slot_id": {
+      "type": "string",
+      "title": "Slot ID"
+    },
+    "meeting_type": {
+      "type": "string",
+      "title": "Meeting Type",
+      "enum": [
+        "Online",
+        "In-Person"
+      ]
+    },
+    "meeting_link": {
+      "type": "string",
+      "title": "Meeting Link"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "Pending",
+        "Confirmed",
+        "Completed",
+        "Cancelled"
+      ],
+      "default": "Pending"
+    }
+  },
+  "required": [
+    "tutor_id",
+    "student_first_name",
+    "student_last_name",
+    "student_email"
+  ]
+}

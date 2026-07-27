@@ -1,0 +1,140 @@
+{
+  "name": "Module",
+  "type": "object",
+  "properties": {
+    "tutor_id": {
+      "type": "string",
+      "title": "Tutor ID"
+    },
+    "student_id": {
+      "type": "string",
+      "title": "Student ID"
+    },
+    "student_email": {
+      "type": "string",
+      "title": "Student Email"
+    },
+    "tutor_name": {
+      "type": "string",
+      "title": "Tutor Name"
+    },
+    "student_name": {
+      "type": "string",
+      "title": "Student Name"
+    },
+    "name": {
+      "type": "string",
+      "title": "Module Name"
+    },
+    "description": {
+      "type": "string",
+      "title": "Module Description"
+    },
+    "file_url": {
+      "type": "string",
+      "title": "Uploaded File URL"
+    },
+    "file_name": {
+      "type": "string",
+      "title": "Uploaded File Name"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "Assigned",
+        "Submitted for grading",
+        "Graded"
+      ],
+      "default": "Assigned"
+    },
+    "student_submission_url": {
+      "type": "string",
+      "title": "Student Submission URL"
+    },
+    "student_submission_name": {
+      "type": "string",
+      "title": "Student Submission File Name"
+    },
+    "submitted_at": {
+      "type": "string",
+      "title": "Submitted At"
+    },
+    "grade": {
+      "type": "string",
+      "title": "Grade"
+    },
+    "feedback": {
+      "type": "string",
+      "title": "Tutor Feedback"
+    },
+    "graded_at": {
+      "type": "string",
+      "title": "Graded At"
+    }
+  },
+  "required": [
+    "tutor_id",
+    "student_id",
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tutor_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tutor_id": "{{user.id}}"
+        },
+        {
+          "data.student_id": "{{user.id}}"
+        },
+        {
+          "data.student_email": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tutor_id": "{{user.id}}"
+        },
+        {
+          "data.student_email": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tutor_id": "{{user.id}}"
+        }
+      ]
+    }
+  }
+}

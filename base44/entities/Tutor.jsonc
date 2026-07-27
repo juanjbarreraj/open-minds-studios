@@ -1,0 +1,49 @@
+{
+  "name": "Tutor",
+  "type": "object",
+  "properties": {
+    "full_name": {
+      "type": "string",
+      "title": "Full Name"
+    },
+    "email": {
+      "type": "string",
+      "title": "Email"
+    },
+    "phone": {
+      "type": "string",
+      "title": "Phone"
+    },
+    "auth_provider": {
+      "type": "string",
+      "title": "Auth Provider",
+      "enum": [
+        "google",
+        "email"
+      ]
+    },
+    "approved": {
+      "type": "boolean",
+      "title": "Approved",
+      "default": false
+    },
+    "bio": {
+      "type": "string",
+      "title": "Bio"
+    },
+    "can_access_manager_dashboard": {
+      "type": "boolean",
+      "title": "Can Access Manager Dashboard",
+      "default": false
+    },
+    "is_super_admin": {
+      "type": "boolean",
+      "title": "Is Super Admin",
+      "default": false
+    }
+  },
+  "required": [
+    "full_name",
+    "email"
+  ]
+}

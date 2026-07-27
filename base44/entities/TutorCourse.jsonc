@@ -1,0 +1,40 @@
+{
+  "name": "TutorCourse",
+  "type": "object",
+  "properties": {
+    "tutor_id": {
+      "type": "string",
+      "title": "Tutor ID"
+    },
+    "course_id": {
+      "type": "string",
+      "title": "Course ID"
+    }
+  },
+  "required": [
+    "tutor_id",
+    "course_id"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "created_by": {
+        "$exists": true
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

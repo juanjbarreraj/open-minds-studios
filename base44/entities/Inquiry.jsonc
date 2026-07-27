@@ -1,0 +1,38 @@
+{
+  "name": "Inquiry",
+  "type": "object",
+  "properties": {
+    "parent_name": {
+      "type": "string",
+      "title": "Parent Name"
+    },
+    "email": {
+      "type": "string",
+      "title": "Email"
+    },
+    "student_grade": {
+      "type": "string",
+      "title": "Student Grade"
+    },
+    "subject_or_exam": {
+      "type": "string",
+      "title": "Subject or Exam"
+    },
+    "goals": {
+      "type": "string",
+      "title": "Goals"
+    },
+    "message": {
+      "type": "string",
+      "title": "Message"
+    },
+    "interested_program": {
+      "type": "string",
+      "title": "Interested Program"
+    }
+  },
+  "required": [
+    "parent_name",
+    "email"
+  ]
+}
