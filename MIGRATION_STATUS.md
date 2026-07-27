@@ -38,29 +38,70 @@ Statuses: `not started` / `in progress` / `migrated` / `verified`
 
 | Existing feature | Current Base44 dependency | Files involved | Local replacement | Migration status | Testing status |
 |---|---|---|---|---|---|
-| Local backend (Express + SQLite) | n/a (new) | server/** | 11 tables incl. notification_outbox + sessions + files; migrations, seed, reset scripts; `npm run test:api` suite | migrated | 69/69 API tests pass |
-| App bootstrap and public-settings gate | `@base44/vite-plugin` injections; `AuthContext` fetches `/api/apps/public/prod/public-settings` before rendering anything | vite.config.js, index.html, src/App.jsx, src/lib/AuthContext.jsx, src/lib/app-params.js, src/api/base44Client.js | Local AuthContext that calls `GET /api/auth/me` without blocking public pages; Vite proxy to local Express | not started | not tested |
-| Authentication (login, logout, current user) | `base44.auth.me/logout/redirectToLogin`, token in localStorage via app-params | src/lib/AuthContext.jsx, src/lib/app-params.js, src/components/landing/AuthModal.jsx, src/components/ProtectedRoute.jsx | Express session auth: bcryptjs + HTTP-only signed cookie; `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`; login form in AuthModal | not started | not tested |
-| Role and approval gating | `User.role` (admin/user), `Student.approved` + `can_access_student_portal`, `Tutor.approved` + `can_access_manager_dashboard` + `is_super_admin`, checked in frontend | src/components/ProtectedRoute.jsx, dashboards | Server-side role middleware (student_parent / tutor / manager / admin) + `approved` flag; 401/403 from API; frontend redirects only for UX | not started | not tested |
-| Student dashboard | `base44.entities.*` for Student, Booking, Module, Tutor, Course | src/pages/StudentDashboard.jsx, src/components/student/* | `studentsApi` / `bookingsApi` / `modulesApi` over `/api` | not started | not tested |
-| Tutor dashboard | `base44.entities.*` for Tutor, Booking, AvailabilitySlot, Module, TutorCourse | src/pages/TutorDashboard.jsx, src/components/tutor/* | `tutorsApi` / `bookingsApi` / `availabilityApi` / `modulesApi` | not started | not tested |
-| Manager dashboard | `base44.entities.*` CRUD for all entities | src/pages/ManagerDashboard.jsx, src/components/manager/* | Manager-scoped REST endpoints | not started | not tested |
-| Scheduling grid (7-day view, 60-min slots, 30-day cap) | `Tutor.filter`, `AvailabilitySlot.list`, `Booking.list`, `Course.list` | src/components/student/SchedulingGrid.jsx, src/pages/AppointmentScheduling.jsx | `GET /api/availability` + `GET /api/bookings`; slot generation stays 60-min-fit-inside-window; double-booking enforced by DB constraint per (tutor, date, start) | not started | not tested |
-| Booking creation | `Booking.create` (no date stored, see defect 1) | src/components/student/BookingModal.jsx | `POST /api/bookings` with `session_date`; server validates window, 30-day cap, past dates, conflicts | not started | not tested |
-| Booking lifecycle (accept/decline/cancel/complete) | `Booking.update` with status strings | tutor + student + manager components | Status transition endpoints with normalized statuses and audit-preserving cancel/decline | not started | not tested |
-| Modules (assign, submit, grade) | `Module.*` + Base44 `UploadFile` integration | src/components/tutor/AssignModuleModal.jsx, TutorModuleReview.jsx, src/components/student/AssignedModules.jsx | `modulesApi` + multer local uploads under `server/uploads/`, protected download routes, statuses `assigned/submitted/graded` | not started | not tested |
-| Contact form and inquiries | `Inquiry.create` + `base44.functions.invoke('notifyNewInquiry')` (sends 2 emails via Base44 SendEmail) | src/pages/Contact.jsx, src/components/landing/ContactSection.jsx, base44/functions/notifyNewInquiry/entry.ts | `POST /api/inquiries`; `inquiryIntegrationService` abstraction; notification_outbox rows + console preview instead of real email | not started | not tested |
-| Program selection carry-over to Contact | Route state/query param (exact mechanism being audited) | src/pages/SubscriptionPlans.jsx, src/pages/Contact.jsx | Preserved as-is over local API | not started | not tested |
-| Base44-hosted assets | media.base44.com (2 logos, about image, guide PDF), base44.com favicon | index.html, SiteLogo.jsx, About.jsx, HeroSection.jsx, guideData.js | Downloaded to `public/assets/` (already done: logo-no-background.png, logo1.png, about-image1.png, open-minds-studios-journeys.pdf); components to be repointed | in progress | not tested |
-| Base44 packages/config | `@base44/sdk`, `@base44/vite-plugin`, base44Client.js, app-params.js, base44/ folder | package.json, vite.config.js | Removed after all features migrated; entity schemas archived to `docs/legacy-base44/` | not started | not tested |
+| Local backend (Express + SQLite) | n/a (new) | server/** | 12 tables incl. sessions, files, notification_outbox; migrations, seed, reset; API + UI test suites | migrated | 69/69 API tests |
+| App bootstrap and public-settings gate | `@base44/vite-plugin` injections; AuthContext fetched Base44 app public settings before rendering anything | vite.config.js, index.html, src/App.jsx, src/lib/AuthContext.jsx | Public pages render immediately; `GET /api/auth/me` runs in the background; Vite proxies `/api` to Express | migrated | 9 public pages render signed out (UI tests) |
+| Authentication (login, logout, current user) | `base44.auth.me/logout/redirectToLogin`, token in localStorage | src/lib/AuthContext.jsx, src/components/landing/AuthModal.jsx | bcryptjs + signed HTTP-only cookie sessions; `/api/auth/login|logout|me|register|change-password`; inline login form in AuthModal | migrated | login/logout/session tested (API + UI) |
+| Role and approval gating | frontend-only checks on Base44 flags | src/components/ProtectedRoute.jsx, dashboards | Server middleware: requireAuth / requireManager / requireApprovedTutor / requireApprovedStudent; roles student_parent, tutor, manager, admin; 401 and 403 responses | migrated | 6 role-enforcement + 4 scoping tests |
+| Student dashboard | `base44.entities.*` | src/pages/StudentDashboard.jsx, src/components/student/* | studentsApi / bookingsApi / modulesApi / coursesApi / tutorsApi | migrated | loads with seeded data (UI) |
+| Tutor dashboard | `base44.entities.*` | src/pages/TutorDashboard.jsx, src/components/tutor/* | tutorsApi / bookingsApi / availabilityApi / modulesApi | migrated | loads, appointments visible (UI) |
+| Manager dashboard | `base44.entities.*` CRUD | src/pages/ManagerDashboard.jsx, src/components/manager/* | Manager-scoped REST endpoints | migrated | all 6 tabs render seeded data (UI) |
+| Scheduling grid (7-day view, 60-min slots, 30-day cap) | `Tutor.filter`, `AvailabilitySlot.list`, `Booking.list` (leaked every student's data) | src/components/student/SchedulingGrid.jsx, src/pages/AppointmentScheduling.jsx | availabilityApi + `GET /api/bookings/busy` (anonymized); slot fits fully inside window | migrated | 7-day nav, 1-hour slots, 4:00 pm last start verified in browser |
+| Booking creation | `Booking.create` without a calendar date | src/components/student/BookingModal.jsx | `POST /api/bookings` with `session_date`; server validates window, 60-min grid, past dates, 30-day cap, conflicts | migrated | 9 scheduling tests incl. rejections |
+| Booking lifecycle (accept/decline/cancel/complete) | `Booking.update` with inconsistent status strings | tutor, student, manager components | `PATCH /api/bookings/:id/status` with per-actor transition rules; declined and cancelled preserved with timestamps | migrated | 11 lifecycle tests incl. slot re-release |
+| Double-booking prevention | frontend check only | SchedulingGrid | Transaction + partial unique index on (tutor_id, session_date, preferred_start_time) for live statuses | migrated | conflict returns 409 (test) |
+| Modules (assign, submit, grade) | `Module.*` + Base44 UploadFile | tutor and student module components | modulesApi + multer local uploads, protected `/api/files/:id`, statuses assigned/submitted/graded | migrated | 12 module and upload tests |
+| Contact form and inquiries | `Inquiry.create` + `functions.invoke('notifyNewInquiry')` + duplicated Google Sheets webhook in 2 files | src/pages/Contact.jsx, src/components/landing/ContactSection.jsx | Single `POST /api/inquiries`; `server/services/inquiryIntegrationService.js` holds the Sheets seam | migrated | submits and stores (API + UI) |
+| Email notifications | Base44 SendEmail inside a Deno function | base44/functions/notifyNewInquiry | `notification_outbox` table + terminal preview behind `notificationService.js` | migrated | outbox rows asserted, em dash free |
+| Program selection carry-over to Contact | `?program=` query param via full page reload | src/pages/SubscriptionPlans.jsx, src/pages/Contact.jsx | Same param, now client-side navigate; preselects the field | migrated | verified in browser |
+| Base44-hosted assets | media.base44.com (2 logos, about image, guide PDF), base44.com favicon | index.html, SiteLogo.jsx, About.jsx, HeroSection.jsx, guideData.js | Downloaded to `public/assets/`; all components repointed | migrated | all four assets return 200 |
+| Base44 packages/config | `@base44/sdk`, `@base44/vite-plugin`, base44Client.js, app-params.js, base44/ | package.json, vite.config.js | Uninstalled; plugin removed; `@` alias declared explicitly in vite.config.js; schemas archived to `docs/legacy-base44/` | migrated | build succeeds, no Base44 in dist |
 
-## Asset inventory (Base44-hosted URLs found)
+## Asset inventory (all Base44-hosted URLs found and resolved)
 
-| URL | Local replacement | Status |
-|---|---|---|
-| https://media.base44.com/images/public/.../2008f0116_logonobackground.png | /assets/logo-no-background.png | downloaded |
-| https://media.base44.com/images/public/.../7f0d63852_logo1.png | /assets/logo1.png | downloaded |
-| https://media.base44.com/images/public/.../32869e03e_image1.png | /assets/about-image1.png | downloaded |
-| https://media.base44.com/files/public/.../2eb1928c4_Open_Minds_Studios_Journeys.pdf | /assets/open-minds-studios-journeys.pdf | downloaded |
-| https://base44.com/logo_v2.svg (favicon in index.html) | local favicon | not started |
-| https://app.base44.com/support, https://docs.base44.com/..., https://my-to-do-list-81bfaad7.base44.app | Links inside Base44-branded error/404 components that get replaced entirely | not started |
+| Original URL | Local replacement | Used by | Status |
+|---|---|---|---|
+| media.base44.com/.../2008f0116_logonobackground.png | `/assets/logo-no-background.png` | HeroSection.jsx | migrated |
+| media.base44.com/.../7f0d63852_logo1.png | `/assets/logo1.png` | SiteLogo.jsx, favicon | migrated |
+| media.base44.com/.../32869e03e_image1.png | `/assets/about-image1.png` | About.jsx | migrated |
+| media.base44.com/.../2eb1928c4_Open_Minds_Studios_Journeys.pdf | `/assets/open-minds-studios-journeys.pdf` | guideData.js, Guide.jsx | migrated |
+| base44.com/logo_v2.svg | `/assets/logo1.png` | index.html favicon | migrated |
+| /manifest.json (referenced, never existed) | removed | index.html | removed |
+
+No asset failed to download. Nothing at runtime points to a Base44 host.
+
+## Final repository search
+
+Run after completing every phase, excluding `node_modules`, `.git`, and the
+archived `docs/legacy-base44/` folder:
+
+| Search term | Matches in runtime code |
+|---|---|
+| `@base44` | none |
+| `base44.` | none |
+| `media.base44.com` | none |
+
+The word Base44 remains only in this document, in `LOCAL_DEVELOPMENT.md`, in two
+explanatory source comments (`server/db/migrations/001_init.sql` noting which
+defect the `session_date` column fixes, and `server/services/notificationService.js`
+noting where the email templates were ported from), and inside the archived
+reference files under `docs/legacy-base44/`.
+
+## Verification summary
+
+| Check | Result |
+|---|---|
+| `npm run build` | Succeeds; `dist/` contains no Base44 reference |
+| `npm run lint` | Clean (baseline had 18 errors) |
+| `npm run typecheck` | 4 pre-existing errors remain, down from 15; none in migrated data-access code |
+| `npm run test:api` | 69 passed, 0 failed |
+| Browser suite (`server/test/uiTests.mjs`) | 43 passed, 0 failed |
+| Network requests to any Base44 host during a full browser session | zero |
+
+## Pre-existing issues left untouched (not migration defects)
+
+- `src/components/landing/TestimonialsSection.jsx:38` has a duplicate `style`
+  attribute, so the glass-effect style object is silently dropped by JSX. Fixing
+  it would change the rendered design, so it was left alone and reported here.
+- `src/pages/Services.jsx` passes no `children` to a component that destructures
+  it (3 call sites), and Tailwind warns that `duration-[250ms]` is ambiguous.
+  Both predate the migration.

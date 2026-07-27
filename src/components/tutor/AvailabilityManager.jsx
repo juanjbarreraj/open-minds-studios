@@ -10,7 +10,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ ...emptySlot });
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({});
+  const [editForm, setEditForm] = useState({ ...emptySlot });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -89,7 +89,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
                     <button onClick={() => handleToggle(slot)} title={slot.is_active ? 'Deactivate' : 'Activate'} className="text-slate-400 hover:text-indigo-500">
                       {slot.is_active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
                     </button>
-                    <button onClick={() => { setEditingId(slot.id); setEditForm({ start_time: slot.start_time, end_time: slot.end_time, is_active: slot.is_active }); setError(''); }} className="text-slate-400 hover:text-slate-700">
+                    <button onClick={() => { setEditingId(slot.id); setEditForm({ day_of_week: slot.day_of_week, start_time: slot.start_time, end_time: slot.end_time, is_active: slot.is_active }); setError(''); }} className="text-slate-400 hover:text-slate-700">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button onClick={() => handleDelete(slot.id)} className="text-slate-400 hover:text-red-500">
