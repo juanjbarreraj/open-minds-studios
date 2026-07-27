@@ -1,39 +1,37 @@
-**Welcome to your Base44 project** 
+# Open Minds Studios
 
-**About**
+Tutoring platform for Open Minds Studios: a public marketing site plus student,
+tutor, and manager portals.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+- Frontend: React 18, Vite, Tailwind CSS, Radix/shadcn components
+- Backend: Node.js, Express, SQLite (local development)
 
-This project contains everything you need to run your app locally.
+## Quick start
 
-**Edit the code in your local development environment**
-
-Any change pushed to the repo will also be reflected in the Base44 Builder.
-
-**Prerequisites:** 
-
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
-
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+```bash
+npm install
+npm run db:seed   # create the local database and demo data
+npm run dev       # starts the Express API and the Vite dev server together
 ```
 
-Run the app: `npm run dev`
+Then open http://localhost:5173.
 
-**Publish your changes**
+Full setup, demo login credentials, database commands, and testing notes are in
+[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md). Migration history and the current
+state of the move off the previous hosted backend are in
+[MIGRATION_STATUS.md](MIGRATION_STATUS.md).
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+## Scripts
 
-**Docs & Support**
-
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
-
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+| Command | What it does |
+|---|---|
+| `npm run dev` | Runs backend and frontend together |
+| `npm run dev:client` | Vite dev server only (port 5173) |
+| `npm run dev:server` | Express API only (port 3001) |
+| `npm run build` | Production build of the frontend into `dist/` |
+| `npm run lint` | ESLint over the project |
+| `npm run typecheck` | TypeScript checkJs pass |
+| `npm run db:migrate` | Apply pending SQL migrations |
+| `npm run db:seed` | Reset application data and load demo records |
+| `npm run db:reset` | Delete the database file, then migrate and seed |
+| `npm run test:api` | Automated backend test suite against a temporary database |

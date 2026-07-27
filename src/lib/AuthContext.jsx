@@ -3,7 +3,7 @@ import { authApi } from '@/api/authApi';
 
 // Local session-based auth. Public pages never block on this: the app renders
 // immediately while the session check runs in the background.
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);        // { id, email, full_name, role, ... }

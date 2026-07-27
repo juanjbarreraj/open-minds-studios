@@ -111,7 +111,7 @@ export default function TutorModuleReview({ tutorId }) {
 
   const load = async () => {
     const mods = await modulesApi.list({ status: 'submitted' });
-    mods.sort((a, b) => new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0));
+    mods.sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
     setModules(mods);
     setLoading(false);
   };

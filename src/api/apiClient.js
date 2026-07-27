@@ -14,6 +14,7 @@ export class ApiError extends Error {
 }
 
 async function request(method, path, body, options = {}) {
+  /** @type {RequestInit & { headers: Record<string, string> }} */
   const init = {
     method,
     credentials: 'include',
