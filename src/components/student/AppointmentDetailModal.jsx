@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, CalendarDays, User, BookOpen, MapPin, Monitor, Loader2, AlertTriangle } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { X, User, MapPin, Monitor, Loader2, AlertTriangle } from 'lucide-react';
+import { bookingsApi, bookingStatusLabel } from '@/api/bookingsApi';
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -28,11 +28,11 @@ function formatBookingDate(dayName, date) {
 }
 
 const statusStyles = {
-  'Pending': 'bg-amber-100 text-amber-700',
-  'Appointment Confirmed': 'bg-emerald-100 text-emerald-700',
-  'Confirmed': 'bg-emerald-100 text-emerald-700',
-  'Completed': 'bg-blue-100 text-blue-700',
-  'Cancelled': 'bg-red-100 text-red-700',
+  pending: 'bg-amber-100 text-amber-700',
+  confirmed: 'bg-emerald-100 text-emerald-700',
+  completed: 'bg-blue-100 text-blue-700',
+  cancelled: 'bg-red-100 text-red-700',
+  declined: 'bg-red-100 text-red-700',
 };
 
 export default function AppointmentDetailModal({ booking, tutor, course, date, onClose, onCancelled }) {
@@ -46,11 +46,11 @@ export default function AppointmentDetailModal({ booking, tutor, course, date, o
   const workOn = descParts[0] || '';
   const assignmentDesc = descParts.slice(1).join('\n\n') || '';
 
-  const canCancel = booking.status === 'Pending' || booking.status === 'Appointment Confirmed' || booking.status === 'Confirmed';
+  const canCancel = booking.is_own === true && (booking.status === 'pending' || booking.status === 'confirmed');
 
   const handleCancel = async () => {
     setCancelling(true);
-    await base44.entities.Booking.update(booking.id, { status: 'Cancelled' });
+    await bookingsApi.updateStatus(booking.id, 'cancelled');
     setCancelling(false);
     if (onCancelled) onCancelled();
   };
@@ -79,12 +79,12 @@ export default function AppointmentDetailModal({ booking, tutor, course, date, o
           {/* Status banner */}
           <div className="flex items-center gap-3">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[booking.status] || 'bg-slate-100 text-slate-600'}`}>
-              {booking.status}
+              {bookingStatusLabel(booking.status)}
             </span>
-            {booking.status === 'Pending' && (
+            {booking.status === 'pending' && (
               <span className="text-xs text-slate-500">Waiting for tutor confirmation.</span>
             )}
-            {(booking.status === 'Appointment Confirmed' || booking.status === 'Confirmed') && (
+            {booking.status === 'confirmed' && (
               <span className="text-xs text-slate-500">Your session is confirmed.</span>
             )}
           </div>

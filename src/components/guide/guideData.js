@@ -1,4 +1,4 @@
-export const PDF_URL = 'https://media.base44.com/files/public/69c3f3171ffea17f779ab7ec/2eb1928c4_Open_Minds_Studios_Journeys.pdf';
+export const PDF_URL = '/assets/open-minds-studios-journeys.pdf';
 
 export const chapters = [
   {

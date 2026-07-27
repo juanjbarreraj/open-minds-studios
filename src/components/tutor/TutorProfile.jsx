@@ -41,7 +41,7 @@ export default function TutorProfile({ tutor, courses }) {
           <div className="flex flex-wrap gap-2">
             {courses.map((c) => (
               <span key={c.id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600">
-                {c.course_code} — {c.course_name}
+                {c.course_code} - {c.course_name}
               </span>
             ))}
           </div>

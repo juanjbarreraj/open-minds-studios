@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, Mail, Phone, Video, MapPin, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { bookingsApi, bookingStatusLabel } from '@/api/bookingsApi';
 
 function formatSlotLabel(time) {
   if (!time) return '';
@@ -11,11 +11,11 @@ function formatSlotLabel(time) {
 }
 
 const statusStyles = {
-  'Pending': 'bg-amber-100 text-amber-700 border-amber-200',
-  'Appointment Confirmed': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  'Confirmed': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  'Completed': 'bg-blue-100 text-blue-700 border-blue-200',
-  'Cancelled': 'bg-red-100 text-red-700 border-red-200',
+  pending: 'bg-amber-100 text-amber-700 border-amber-200',
+  confirmed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  completed: 'bg-blue-100 text-blue-700 border-blue-200',
+  declined: 'bg-red-100 text-red-700 border-red-200',
+  cancelled: 'bg-red-100 text-red-700 border-red-200',
 };
 
 function AppointmentCard({ booking, course, onRefresh }) {
@@ -23,19 +23,19 @@ function AppointmentCard({ booking, course, onRefresh }) {
 
   const handleAccept = async () => {
     setActing('accept');
-    await base44.entities.Booking.update(booking.id, { status: 'Appointment Confirmed' });
+    await bookingsApi.updateStatus(booking.id, 'confirmed');
     setActing(null);
     onRefresh();
   };
 
   const handleDecline = async () => {
     setActing('decline');
-    await base44.entities.Booking.update(booking.id, { status: 'Cancelled' });
+    await bookingsApi.updateStatus(booking.id, 'declined');
     setActing(null);
     onRefresh();
   };
 
-  const isPending = booking.status === 'Pending';
+  const isPending = booking.status === 'pending';
 
   return (
     <div className={`rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md ${isPending ? 'border-amber-200' : 'border-slate-200'}`}>
@@ -51,7 +51,7 @@ function AppointmentCard({ booking, course, onRefresh }) {
           )}
         </div>
         <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[booking.status] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-          {booking.status}
+          {bookingStatusLabel(booking.status)}
         </span>
       </div>
 
@@ -124,8 +124,8 @@ export default function AppointmentsSection({ bookings, courses, onRefresh }) {
   const getCourse = (courseId) => courses.find((c) => c.id === courseId);
 
   // Separate pending from others for display priority
-  const pending = bookings.filter(b => b.status === 'Pending');
-  const others = bookings.filter(b => b.status !== 'Pending');
+  const pending = bookings.filter(b => b.status === 'pending');
+  const others = bookings.filter(b => b.status !== 'pending');
   const ordered = [...pending, ...others];
 
   if (ordered.length === 0) {

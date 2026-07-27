@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { base44 } from '@/api/base44Client';
-import { CalendarDays, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { bookingsApi } from '@/api/bookingsApi';
+import { modulesApi } from '@/api/modulesApi';
+import { coursesApi } from '@/api/coursesApi';
+import { tutorsApi } from '@/api/tutorsApi';
+import { CheckCircle2 } from 'lucide-react';
 import MetricCards from './MetricCards';
 import TodaysFocus from './TodaysFocus';
 import UpcomingSessions from './UpcomingSessions';
@@ -25,7 +27,7 @@ export default function StudentDashboardView({ user, student }) {
   const loadModules = useCallback(async () => {
     if (!student) return;
     setLoadingModules(true);
-    const mods = await base44.entities.Module.filter({ student_email: student.email }, '-created_date');
+    const mods = await modulesApi.list();
     setModules(mods);
     setLoadingModules(false);
   }, [student]);
@@ -34,11 +36,11 @@ export default function StudentDashboardView({ user, student }) {
     if (!student) return;
     (async () => {
       const [allBookings, allCourses, allTutors] = await Promise.all([
-        base44.entities.Booking.filter({ student_email: student.email }, '-created_date'),
-        base44.entities.Course.list(),
-        base44.entities.Tutor.list(),
+        bookingsApi.list(),
+        coursesApi.list(),
+        tutorsApi.list(),
       ]);
-      setBookings(allBookings.filter(b => b.status !== 'Cancelled'));
+      setBookings(allBookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined'));
       setCourses(allCourses);
       setTutors(allTutors);
       setLoadingBookings(false);
@@ -46,8 +48,8 @@ export default function StudentDashboardView({ user, student }) {
     loadModules();
   }, [student, loadModules]);
 
-  const upcoming = bookings.filter(b => b.status === 'Pending' || b.status === 'Confirmed' || b.status === 'Appointment Confirmed');
-  const past = bookings.filter(b => b.status === 'Completed');
+  const upcoming = bookings.filter(b => b.status === 'pending' || b.status === 'confirmed');
+  const past = bookings.filter(b => b.status === 'completed');
 
   const getTutorName = (tutorId) => tutors.find(t => t.id === tutorId)?.full_name || 'Your Tutor';
   const getCourseName = (courseId) => {
@@ -56,7 +58,7 @@ export default function StudentDashboardView({ user, student }) {
   };
 
   const handleCancel = async (bookingId) => {
-    await base44.entities.Booking.update(bookingId, { status: 'Cancelled' });
+    await bookingsApi.updateStatus(bookingId, 'cancelled');
     setBookings(prev => prev.filter(b => b.id !== bookingId));
   };
 

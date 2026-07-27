@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 import { Users, BookOpen } from 'lucide-react';
 import AssignModuleModal from './AssignModuleModal';
 
-export default function MyStudentsSection({ bookings, tutorId, tutorName, onModuleAssigned }) {
+export default function MyStudentsSection({ bookings, onModuleAssigned }) {
   const [hoveredId, setHoveredId] = useState(null);
   const [assigningStudent, setAssigningStudent] = useState(null);
 
   // Derive unique accepted students from confirmed bookings
-  const confirmedBookings = bookings.filter(
-    b => b.status === 'Appointment Confirmed' || b.status === 'Confirmed'
-  );
+  const confirmedBookings = bookings.filter(b => b.status === 'confirmed');
 
   const studentMap = {};
   for (const b of confirmedBookings) {
@@ -75,8 +73,6 @@ export default function MyStudentsSection({ bookings, tutorId, tutorName, onModu
       {assigningStudent && (
         <AssignModuleModal
           student={assigningStudent}
-          tutorId={tutorId}
-          tutorName={tutorName}
           onClose={() => setAssigningStudent(null)}
           onSuccess={() => {
             setAssigningStudent(null);

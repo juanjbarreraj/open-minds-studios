@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { bookingsApi, bookingStatusLabel } from '@/api/bookingsApi';
+import { tutorsApi } from '@/api/tutorsApi';
+import { coursesApi } from '@/api/coursesApi';
 import { Search, Pencil, Trash2, Check, X, Loader2 } from 'lucide-react';
 
-const STATUSES = ['Pending', 'Confirmed', 'Completed', 'Cancelled'];
-const statusColors = { Pending: 'bg-yellow-100 text-yellow-700', Confirmed: 'bg-blue-100 text-blue-700', Completed: 'bg-green-100 text-green-700', Cancelled: 'bg-red-100 text-red-700' };
+const STATUSES = ['pending', 'confirmed', 'declined', 'cancelled', 'completed'];
+const statusColors = { pending: 'bg-yellow-100 text-yellow-700', confirmed: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', cancelled: 'bg-red-100 text-red-700', declined: 'bg-red-100 text-red-700' };
 
 export default function BookingManager() {
   const [bookings, setBookings] = useState([]);
@@ -22,9 +24,9 @@ export default function BookingManager() {
   const load = async () => {
     setLoading(true);
     const [b, t, c] = await Promise.all([
-      base44.entities.Booking.list('-created_date'),
-      base44.entities.Tutor.list(),
-      base44.entities.Course.list(),
+      bookingsApi.list(),
+      tutorsApi.list(),
+      coursesApi.list(),
     ]);
     setBookings(b); setTutors(t); setCourses(c); setLoading(false);
   };
@@ -34,18 +36,18 @@ export default function BookingManager() {
 
   const save = async () => {
     setSaving(true);
-    await base44.entities.Booking.update(editing.id, { status: editForm.status, meeting_link: editForm.meeting_link });
+    await bookingsApi.managerUpdate(editing.id, { status: editForm.status, meeting_link: editForm.meeting_link });
     flash('Booking updated.');
     setSaving(false); setEditing(null); load();
   };
 
   const confirmDelete = async () => {
-    await base44.entities.Booking.delete(deleteId);
+    await bookingsApi.remove(deleteId);
     setDeleteId(null); flash('Booking deleted.'); load();
   };
 
-  const getTutorName = (id) => tutors.find(t => t.id === id)?.full_name || '—';
-  const getCourseName = (id) => { const c = courses.find(c => c.id === id); return c ? `${c.course_code}` : '—'; };
+  const getTutorName = (id) => tutors.find(t => t.id === id)?.full_name || '-';
+  const getCourseName = (id) => { const c = courses.find(c => c.id === id); return c ? `${c.course_code}` : '-'; };
 
   const filtered = bookings.filter(b => {
     const name = `${b.student_first_name} ${b.student_last_name} ${b.student_email}`.toLowerCase();
@@ -65,7 +67,7 @@ export default function BookingManager() {
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
           <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          {STATUSES.map(s => <option key={s} value={s}>{bookingStatusLabel(s)}</option>)}
         </select>
         <select value={filterTutor} onChange={e => setFilterTutor(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
           <option value="">All Tutors</option>
@@ -75,10 +77,10 @@ export default function BookingManager() {
 
       {editing && (
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-3">
-          <div className="text-sm font-semibold text-indigo-700">Edit Booking — {editing.student_first_name} {editing.student_last_name}</div>
+          <div className="text-sm font-semibold text-indigo-700">Edit Booking - {editing.student_first_name} {editing.student_last_name}</div>
           <div className="grid gap-3 sm:grid-cols-2">
             <select value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
-              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              {STATUSES.map(s => <option key={s} value={s}>{bookingStatusLabel(s)}</option>)}
             </select>
             <input placeholder="Meeting Link" value={editForm.meeting_link || ''} onChange={e => setEditForm(p => ({ ...p, meeting_link: e.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
           </div>
@@ -115,7 +117,7 @@ export default function BookingManager() {
                   <p className="text-xs text-slate-500">{b.student_email}{b.student_phone ? ` · ${b.student_phone}` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-3 py-0.5 text-xs font-semibold ${statusColors[b.status] || 'bg-slate-100 text-slate-600'}`}>{b.status}</span>
+                  <span className={`rounded-full px-3 py-0.5 text-xs font-semibold ${statusColors[b.status] || 'bg-slate-100 text-slate-600'}`}>{bookingStatusLabel(b.status)}</span>
                   <button onClick={() => { setEditing(b); setEditForm({ status: b.status, meeting_link: b.meeting_link || '' }); }} className="text-slate-400 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
                   <button onClick={() => setDeleteId(b.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
@@ -123,7 +125,7 @@ export default function BookingManager() {
               <div className="mt-2 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
                 <span>Tutor: <span className="font-medium text-slate-700">{getTutorName(b.tutor_id)}</span></span>
                 <span>Course: <span className="font-medium text-slate-700">{getCourseName(b.course_id)}</span></span>
-                <span>{b.preferred_day} · {b.preferred_start_time} – {b.preferred_end_time}</span>
+                <span>{b.preferred_day} {b.session_date} · {b.preferred_start_time} – {b.preferred_end_time}</span>
                 <span>{b.meeting_type}{b.meeting_link ? <a href={b.meeting_link} target="_blank" rel="noreferrer" className="ml-1 text-indigo-500 underline">Join</a> : ''}</span>
               </div>
               {b.assignment_description && <p className="mt-2 rounded-xl bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{b.assignment_description}</p>}

@@ -2,8 +2,7 @@ import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  BookOpen, Target, Brain, ArrowRight, CheckCircle2, ClipboardList,
-  Users, Star, Clock, MessageCircle, ChevronRight
+  BookOpen, Target, Brain, ArrowRight, CheckCircle2
 } from 'lucide-react';
 import SiteHeader from '../components/landing/SiteHeader';
 import SiteFooter from '../components/landing/SiteFooter';

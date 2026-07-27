@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { coursesApi } from '@/api/coursesApi';
 import { Plus, Pencil, Trash2, Search, Check, X, Loader2 } from 'lucide-react';
 
 const empty = { course_code: '', course_name: '' };
@@ -14,22 +14,22 @@ export default function CourseManager() {
   const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState('');
 
-  const load = async () => { setLoading(true); setCourses(await base44.entities.Course.list()); setLoading(false); };
+  const load = async () => { setLoading(true); setCourses(await coursesApi.list()); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
 
   const save = async () => {
     setSaving(true);
-    if (editing === 'new') { await base44.entities.Course.create(form); flash('Course created.'); }
-    else { await base44.entities.Course.update(editing.id, form); flash('Course updated.'); }
+    if (editing === 'new') { await coursesApi.create(form); flash('Course created.'); }
+    else { await coursesApi.update(editing.id, form); flash('Course updated.'); }
     setSaving(false);
     setEditing(null);
     load();
   };
 
   const confirmDelete = async () => {
-    await base44.entities.Course.delete(deleteId);
+    await coursesApi.remove(deleteId);
     setDeleteId(null);
     flash('Course deleted.');
     load();

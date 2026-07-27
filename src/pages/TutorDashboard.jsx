@@ -1,8 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { base44 } from '@/api/base44Client';
+import { useAuth } from '@/lib/AuthContext';
+import { bookingsApi } from '@/api/bookingsApi';
+import { availabilityApi } from '@/api/availabilityApi';
+import { coursesApi, tutorCoursesApi } from '@/api/coursesApi';
 import { LogOut, LayoutDashboard, Clock, CalendarDays, Loader2, ShieldCheck, Users, ClipboardList } from 'lucide-react';
 import SiteLogo from '../components/shared/SiteLogo';
 import { Link } from 'react-router-dom';
+import AuthModal from '@/components/landing/AuthModal';
 import AppointmentsSection from '../components/tutor/AppointmentsSection';
 import AvailabilityManager from '../components/tutor/AvailabilityManager';
 import TutorProfile from '../components/tutor/TutorProfile';
@@ -10,45 +14,39 @@ import MyStudentsSection from '../components/tutor/MyStudentsSection';
 import TutorModuleReview from '../components/tutor/TutorModuleReview';
 
 export default function TutorDashboard() {
-  const [user, setUser] = useState(null);
-  const [tutor, setTutor] = useState(null);
+  const { user, tutor, isAuthenticated, isLoadingAuth, logout } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [slots, setSlots] = useState([]);
   const [courses, setCourses] = useState([]);
-  const [tutorCourses, setTutorCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('loading'); // loading | no-auth | no-tutor | pending | approved
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const loadData = useCallback(async (tutorId) => {
     const [bookingData, slotData, tcData, courseData] = await Promise.all([
-      base44.entities.Booking.filter({ tutor_id: tutorId }, '-created_date'),
-      base44.entities.AvailabilitySlot.filter({ tutor_id: tutorId }),
-      base44.entities.TutorCourse.filter({ tutor_id: tutorId }),
-      base44.entities.Course.list(),
+      bookingsApi.list(),
+      availabilityApi.list(tutorId),
+      tutorCoursesApi.list(tutorId),
+      coursesApi.list(),
     ]);
-    setBookings(bookingData.filter(b => b.status !== 'Cancelled'));
+    setBookings(bookingData.filter(b => b.status !== 'cancelled' && b.status !== 'declined'));
     setSlots(slotData);
-    setTutorCourses(tcData);
     const courseIds = tcData.map((tc) => tc.course_id);
     setCourses(courseData.filter((c) => courseIds.includes(c.id)));
   }, []);
 
   useEffect(() => {
+    if (isLoadingAuth) return;
     (async () => {
-      const authed = await base44.auth.isAuthenticated();
-      if (!authed) { setStatus('no-auth'); setLoading(false); return; }
-      const me = await base44.auth.me();
-      setUser(me);
-      const tutors = await base44.entities.Tutor.filter({ email: me.email });
-      if (tutors.length === 0) { setStatus('no-tutor'); setLoading(false); return; }
-      const t = tutors[0];
-      setTutor(t);
-      if (!t.approved) { setStatus('pending'); setLoading(false); return; }
-      await loadData(t.id);
+      if (!isAuthenticated) { setStatus('no-auth'); setLoading(false); return; }
+      if (!tutor) { setStatus('no-tutor'); setLoading(false); return; }
+      if (!tutor.approved) { setStatus('pending'); setLoading(false); return; }
+      setLoading(true);
+      await loadData(tutor.id);
       setStatus('approved');
       setLoading(false);
     })();
-  }, [loadData]);
+  }, [isLoadingAuth, isAuthenticated, tutor, loadData]);
 
   if (loading) {
     return (
@@ -65,11 +63,12 @@ export default function TutorDashboard() {
         <h1 className="text-2xl font-bold text-slate-800">Tutor Dashboard</h1>
         <p className="mt-2 text-slate-500">Please sign in to access your dashboard.</p>
         <button
-          onClick={() => base44.auth.redirectToLogin()}
+          onClick={() => setShowAuthModal(true)}
           className="mt-6 rounded-2xl bg-indigo-600 px-8 py-3 text-sm font-semibold text-white shadow transition hover:bg-indigo-700"
         >
           Sign In
         </button>
+        {showAuthModal && <AuthModal type="tutor" onClose={() => setShowAuthModal(false)} />}
       </div>
     );
   }
@@ -98,7 +97,7 @@ export default function TutorDashboard() {
           <p className="mt-3 max-w-sm text-sm text-slate-500">
             Welcome, <strong>{tutor?.full_name}</strong>! Your tutor account is currently under review. You'll receive access once an administrator approves your profile.
           </p>
-          <button onClick={() => base44.auth.logout()} className="mt-6 rounded-xl border border-slate-200 px-5 py-2 text-sm text-slate-500 transition hover:bg-slate-50">
+          <button onClick={() => logout()} className="mt-6 rounded-xl border border-slate-200 px-5 py-2 text-sm text-slate-500 transition hover:bg-slate-50">
             Sign Out
           </button>
         </div>
@@ -128,7 +127,7 @@ export default function TutorDashboard() {
               </Link>
             )}
             <button
-              onClick={() => base44.auth.logout()}
+              onClick={() => logout()}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
             >
               <LogOut className="h-4 w-4" /> Sign Out
@@ -161,8 +160,6 @@ export default function TutorDashboard() {
               </div>
               <MyStudentsSection
                 bookings={bookings}
-                tutorId={tutor.id}
-                tutorName={tutor.full_name}
                 onModuleAssigned={() => {}}
               />
             </section>
@@ -190,7 +187,7 @@ export default function TutorDashboard() {
             </section>
           </div>
 
-          {/* Right column — Profile */}
+          {/* Right column - Profile */}
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-slate-800">My Profile</h2>
             <TutorProfile tutor={tutor} courses={courses} />

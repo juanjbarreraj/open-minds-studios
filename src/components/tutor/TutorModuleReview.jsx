@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { modulesApi } from '@/api/modulesApi';
+import { filesApi } from '@/api/filesApi';
 import { ClipboardList, ExternalLink, Loader2, CheckCircle } from 'lucide-react';
 
 function formatDate(iso) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -16,12 +17,7 @@ function GradeCard({ mod, onGraded }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    await base44.entities.Module.update(mod.id, {
-      grade: grade.trim(),
-      feedback: feedback.trim(),
-      status: 'Graded',
-      graded_at: new Date().toISOString(),
-    });
+    await modulesApi.grade(mod.id, grade.trim(), feedback.trim());
     setSaving(false);
     setDone(true);
     onGraded?.();
@@ -48,7 +44,7 @@ function GradeCard({ mod, onGraded }) {
           <div className="text-sm text-slate-600 min-w-0">
             <span className="font-medium">Submission:</span>{' '}
             <a
-              href={mod.student_submission_url}
+              href={filesApi.url(mod.student_submission_url)}
               target="_blank"
               rel="noreferrer"
               className="underline truncate"
@@ -114,7 +110,8 @@ export default function TutorModuleReview({ tutorId }) {
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    const mods = await base44.entities.Module.filter({ tutor_id: tutorId, status: 'Submitted for grading' }, '-submitted_at');
+    const mods = await modulesApi.list({ status: 'submitted' });
+    mods.sort((a, b) => new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0));
     setModules(mods);
     setLoading(false);
   };

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { X, Upload, Loader2, CheckCircle, FileText } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { X, Upload, Loader2, CheckCircle } from 'lucide-react';
+import { filesApi } from '@/api/filesApi';
+import { modulesApi } from '@/api/modulesApi';
 
 const ACCEPTED_TYPES = '.pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt';
 
-export default function AssignModuleModal({ student, tutorId, tutorName, onClose, onSuccess }) {
+export default function AssignModuleModal({ student, onClose, onSuccess }) {
   const [form, setForm] = useState({ name: '', description: '' });
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -25,32 +26,21 @@ export default function AssignModuleModal({ student, tutorId, tutorName, onClose
     setError('');
     setSaving(true);
 
-    let fileUrl = null;
-    let fileName = null;
+    let fileId = null;
 
     if (file) {
       setUploading(true);
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      fileUrl = file_url;
-      fileName = file.name;
+      const { id } = await filesApi.upload(file);
+      fileId = id;
       setUploading(false);
     }
 
-    // Look up student record to get student ID
-    const students = await base44.entities.Student.filter({ email: student.email });
-    const studentRecord = students[0];
-
-    await base44.entities.Module.create({
-      tutor_id: tutorId,
-      tutor_name: tutorName || '',
-      student_id: studentRecord?.id || '',
+    await modulesApi.create({
       student_email: student.email,
       student_name: student.name,
       name: form.name.trim(),
       description: form.description.trim(),
-      file_url: fileUrl,
-      file_name: fileName,
-      status: 'Assigned',
+      file_id: fileId,
     });
 
     setSaving(false);
@@ -108,7 +98,7 @@ export default function AssignModuleModal({ student, tutorId, tutorName, onClose
               <label className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-6 cursor-pointer hover:border-slate-300 hover:bg-slate-100 transition">
                 <Upload className="h-6 w-6 text-slate-400" />
                 <span className="text-sm text-slate-500">
-                  {file ? file.name : 'Click to upload — PDF, Word, images, etc.'}
+                  {file ? file.name : 'Click to upload - PDF, Word, images, etc.'}
                 </span>
                 {file && <span className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB</span>}
                 <input type="file" accept={ACCEPTED_TYPES} onChange={handleFileChange} className="hidden" />

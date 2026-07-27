@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { bookingsApi } from '@/api/bookingsApi';
+import { coursesApi, tutorCoursesApi } from '@/api/coursesApi';
 import { X, Loader2, CheckCircle, Clock } from 'lucide-react';
 
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -24,7 +24,7 @@ function addMinutes(time, mins) {
 const DURATION = 60;
 
 export default function BookingModal({ cell, student, onClose, onBooked }) {
-  const { tutor, date, dayName, slotTime } = cell;
+  const { tutor, date, slotTime } = cell;
 
   const [tutorCourses, setTutorCourses] = useState([]);
   const [allCourses, setAllCourses] = useState([]);
@@ -36,6 +36,7 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [conflict, setConflict] = useState(false);
 
   const endTime = addMinutes(slotTime, DURATION);
   const dateLabel = `${DAY_NAMES[date.getDay()]}, ${MONTH_ABBR[date.getMonth()]}. ${date.getDate()}, ${date.getFullYear()}`;
@@ -43,8 +44,8 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
   useEffect(() => {
     (async () => {
       const [tc, ac] = await Promise.all([
-        base44.entities.TutorCourse.filter({ tutor_id: tutor.id }),
-        base44.entities.Course.list(),
+        tutorCoursesApi.list(tutor.id),
+        coursesApi.list(),
       ]);
       setTutorCourses(tc);
       setAllCourses(ac);
@@ -53,6 +54,12 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
   }, [tutor.id]);
 
   const availableCourses = allCourses.filter(c => tutorCourses.some(tc => tc.course_id === c.id));
+
+  // After a slot conflict the grid data is stale, so closing refreshes it.
+  const handleClose = () => {
+    if (conflict) onBooked();
+    else onClose();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -63,21 +70,24 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
     setError('');
     setSaving(true);
 
-    const nameParts = (student?.full_name || '').split(' ');
-    await base44.entities.Booking.create({
-      tutor_id: tutor.id,
-      student_first_name: student?.first_name || nameParts[0] || '',
-      student_last_name: student?.last_name || nameParts.slice(1).join(' ') || '',
-      student_email: student?.email || '',
-      student_phone: studentPhone,
-      course_id: courseId,
-      assignment_description: `${workOn}\n\n${assignmentDesc}`,
-      preferred_day: dayName,
-      preferred_start_time: slotTime,
-      preferred_end_time: endTime,
-      meeting_type: meetingType,
-      status: 'Pending',
-    });
+    // session_date is the real calendar date of the clicked cell, in local time
+    const sessionDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    try {
+      await bookingsApi.create({
+        tutor_id: tutor.id,
+        session_date: sessionDate,
+        preferred_start_time: slotTime,
+        course_id: courseId,
+        assignment_description: `${workOn}\n\n${assignmentDesc}`,
+        meeting_type: meetingType,
+        student_phone: studentPhone,
+      });
+    } catch (err) {
+      setSaving(false);
+      if (err?.status === 409) setConflict(true);
+      setError(err?.message || 'Something went wrong. Please try again.');
+      return;
+    }
 
     setSaving(false);
     setSuccess(true);
@@ -87,12 +97,12 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
   const inputCls = 'w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-50 transition';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && handleClose()}>
       <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4 rounded-t-3xl">
           <h2 className="text-xl font-bold text-slate-800">Book Appointment</h2>
-          <button onClick={onClose} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+          <button onClick={handleClose} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -194,7 +204,7 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                 {saving ? 'Submitting...' : 'Request Appointment'}
               </button>
-              <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm text-slate-600 hover:bg-slate-50 transition">
+              <button type="button" onClick={handleClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm text-slate-600 hover:bg-slate-50 transition">
                 Cancel
               </button>
             </div>

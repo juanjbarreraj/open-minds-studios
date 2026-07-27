@@ -1,15 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, Mail, MapPin, Loader2, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { base44 } from '@/api/base44Client';
+import { inquiriesApi } from '@/api/inquiriesApi';
 import SiteHeader from '../components/landing/SiteHeader';
 import SiteFooter from '../components/landing/SiteFooter';
 
 const inView = { initial: { opacity: 0, y: 20 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.5 } };
-
-// Paste your Google Apps Script Web App URL here after deploying the script.
-// See setup instructions: deploy as Web App, Execute as: Me, Who has access: Anyone.
-const GOOGLE_SHEETS_WEBHOOK_URL = '';
 
 const PROGRAMS = [
   'Foundation Program',
@@ -35,26 +31,6 @@ export default function Contact() {
 
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const sendToGoogleSheets = async () => {
-    if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
-    const payload = {
-      timestamp: new Date().toISOString(),
-      parentName: form.parentName,
-      email: form.email,
-      studentGrade: form.grade,
-      subjectExam: form.subject,
-      interestedProgram: form.interestedProgram || 'Not sure yet',
-      mainGoal: form.goal,
-      studentNeeds: form.details,
-    };
-    await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSending(true);
@@ -69,11 +45,7 @@ export default function Contact() {
         message: form.details,
         interested_program: form.interestedProgram,
       };
-      await Promise.all([
-        base44.entities.Inquiry.create(inquiry),
-        sendToGoogleSheets(),
-      ]);
-      await base44.functions.invoke('notifyNewInquiry', { inquiry });
+      await inquiriesApi.create(inquiry);
       setSent(true);
     } catch (err) {
       setError('Something went wrong. Please try again.');

@@ -3,8 +3,8 @@ import { CalendarDays, Loader2, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const STATUS_COLORS = {
-  Pending: { bg: 'rgba(246,178,59,0.1)', color: 'rgb(180,120,10)' },
-  Confirmed: { bg: 'rgba(98,191,161,0.1)', color: 'rgb(60,160,130)' },
+  pending: { bg: 'rgba(246,178,59,0.1)', color: 'rgb(180,120,10)' },
+  confirmed: { bg: 'rgba(98,191,161,0.1)', color: 'rgb(60,160,130)' },
 };
 
 function formatSlot(day, start, end) {
@@ -43,7 +43,7 @@ export default function UpcomingSessions({ bookings, loading, getTutorName, getC
       ) : (
         <div className="space-y-3">
           {bookings.map(b => {
-            const sc = STATUS_COLORS[b.status] || STATUS_COLORS.Pending;
+            const sc = STATUS_COLORS[b.status] || STATUS_COLORS.pending;
             return (
               <div
                 key={b.id}

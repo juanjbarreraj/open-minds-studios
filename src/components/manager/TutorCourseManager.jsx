@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { tutorsApi } from '@/api/tutorsApi';
+import { coursesApi, tutorCoursesApi } from '@/api/coursesApi';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 
 export default function TutorCourseManager() {
@@ -10,15 +11,14 @@ export default function TutorCourseManager() {
   const [selectedTutor, setSelectedTutor] = useState('');
   const [selectedCourse, setSelectedCourse] = useState('');
   const [saving, setSaving] = useState(false);
-  const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState('');
 
   const load = async () => {
     setLoading(true);
     const [t, c, tc] = await Promise.all([
-      base44.entities.Tutor.list(),
-      base44.entities.Course.list(),
-      base44.entities.TutorCourse.list(),
+      tutorsApi.list(),
+      coursesApi.list(),
+      tutorCoursesApi.list(),
     ]);
     setTutors(t);
     setCourses(c);
@@ -34,22 +34,24 @@ export default function TutorCourseManager() {
     const exists = tutorCourses.find(tc => tc.tutor_id === selectedTutor && tc.course_id === selectedCourse);
     if (exists) { flash('Assignment already exists.'); return; }
     setSaving(true);
-    await base44.entities.TutorCourse.create({ tutor_id: selectedTutor, course_id: selectedCourse });
-    flash('Course assigned.');
+    try {
+      await tutorCoursesApi.create(selectedTutor, selectedCourse);
+      flash('Course assigned.');
+      setSelectedTutor('');
+      setSelectedCourse('');
+      load();
+    } catch (err) {
+      if (err?.status === 409) { flash('Assignment already exists.'); }
+      else { flash(err?.message || 'Something went wrong.'); }
+    }
     setSaving(false);
-    setSelectedTutor('');
-    setSelectedCourse('');
-    load();
   };
 
   const handleDelete = async (id) => {
-    await base44.entities.TutorCourse.delete(id);
+    await tutorCoursesApi.remove(id);
     flash('Assignment removed.');
     load();
   };
-
-  const getTutorName = (id) => tutors.find(t => t.id === id)?.full_name || id;
-  const getCourseName = (id) => { const c = courses.find(c => c.id === id); return c ? `${c.course_code} — ${c.course_name}` : id; };
 
   // Group by tutor
   const grouped = tutors.map(t => ({
@@ -71,7 +73,7 @@ export default function TutorCourseManager() {
           </select>
           <select value={selectedCourse} onChange={e => setSelectedCourse(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm flex-1 min-w-[160px]">
             <option value="">Select Course…</option>
-            {courses.map(c => <option key={c.id} value={c.id}>{c.course_code} — {c.course_name}</option>)}
+            {courses.map(c => <option key={c.id} value={c.id}>{c.course_code} - {c.course_name}</option>)}
           </select>
           <button onClick={handleAssign} disabled={saving || !selectedTutor || !selectedCourse} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Assign
@@ -93,7 +95,7 @@ export default function TutorCourseManager() {
                   const c = courses.find(c => c.id === tc.course_id);
                   return (
                     <span key={tc.id} className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-                      {c ? `${c.course_code} — ${c.course_name}` : tc.course_id}
+                      {c ? `${c.course_code} - ${c.course_name}` : tc.course_id}
                       <button onClick={() => handleDelete(tc.id)} className="text-indigo-300 hover:text-red-500">
                         <Trash2 className="h-3 w-3" />
                       </button>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowRight, CheckCircle2, Users, BookOpen, ClipboardList,
-  Wifi, Heart, Star, Shield, Clock, MessageCircle, Zap } from
+  Wifi, Heart, Star, Shield, Clock, MessageCircle } from
 'lucide-react';
 import SiteHeader from '../components/landing/SiteHeader';
 import SiteFooter from '../components/landing/SiteFooter';
@@ -91,7 +91,7 @@ export default function About() {
             </div>
             <div className="rounded-3xl overflow-hidden shadow-lg">
               <img 
-                src="https://media.base44.com/images/public/69c3f3171ffea17f779ab7ec/32869e03e_image1.png" 
+                src="/assets/about-image1.png"
                 alt="Nina McGuigan, Founder of Open Minds Studios" 
                 className="w-full h-auto object-cover"
               />

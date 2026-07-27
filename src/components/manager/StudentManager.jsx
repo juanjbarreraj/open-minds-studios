@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { studentsApi } from '@/api/studentsApi';
 import { Plus, Pencil, Trash2, Search, Check, X, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
 
 const empty = { first_name: '', last_name: '', full_name: '', email: '', phone: '', approved: false, can_access_student_portal: false, notes: '' };
@@ -14,7 +14,7 @@ export default function StudentManager() {
   const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState('');
 
-  const load = async () => { setLoading(true); setStudents(await base44.entities.Student.list('-created_date')); setLoading(false); };
+  const load = async () => { setLoading(true); setStudents(await studentsApi.list()); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -24,18 +24,18 @@ export default function StudentManager() {
     setSaving(true);
     const data = { ...form };
     if (!data.full_name) data.full_name = `${data.first_name} ${data.last_name}`.trim();
-    if (editing === 'new') { await base44.entities.Student.create(data); flash('Student created.'); }
-    else { await base44.entities.Student.update(editing.id, data); flash('Student updated.'); }
+    if (editing === 'new') { await studentsApi.create(data); flash('Student created.'); }
+    else { await studentsApi.update(editing.id, data); flash('Student updated.'); }
     setSaving(false); setEditing(null); load();
   };
 
   const confirmDelete = async () => {
-    await base44.entities.Student.delete(deleteId);
+    await studentsApi.remove(deleteId);
     setDeleteId(null); flash('Student deleted.'); load();
   };
 
   const toggleField = async (student, field) => {
-    await base44.entities.Student.update(student.id, { [field]: !student[field] });
+    await studentsApi.update(student.id, { [field]: !student[field] });
     load();
   };
 
@@ -117,7 +117,7 @@ export default function StudentManager() {
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-800">{s.full_name || `${s.first_name} ${s.last_name}`}</td>
                   <td className="px-4 py-3 text-slate-500">{s.email}</td>
-                  <td className="px-4 py-3 text-slate-500">{s.phone || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500">{s.phone || '-'}</td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => toggleField(s, 'approved')} className={s.approved ? 'text-green-500' : 'text-slate-300'}>
                       {s.approved ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}

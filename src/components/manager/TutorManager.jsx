@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { tutorsApi } from '@/api/tutorsApi';
 import { Plus, Pencil, Trash2, Search, Check, X, Loader2 } from 'lucide-react';
 
 const empty = { full_name: '', email: '', phone: '', bio: '', auth_provider: 'google', approved: false, can_access_manager_dashboard: false, is_super_admin: false };
@@ -14,7 +14,7 @@ export default function TutorManager({ isSuperAdmin }) {
   const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState('');
 
-  const load = async () => { setLoading(true); setTutors(await base44.entities.Tutor.list('-created_date')); setLoading(false); };
+  const load = async () => { setLoading(true); setTutors(await tutorsApi.list()); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -25,17 +25,25 @@ export default function TutorManager({ isSuperAdmin }) {
 
   const save = async () => {
     setSaving(true);
-    const data = { ...form };
+    const data = {
+      full_name: form.full_name,
+      email: form.email,
+      phone: form.phone,
+      bio: form.bio,
+      approved: form.approved,
+      can_access_manager_dashboard: form.can_access_manager_dashboard,
+      is_super_admin: form.is_super_admin,
+    };
     if (!isSuperAdmin) { delete data.can_access_manager_dashboard; delete data.is_super_admin; }
-    if (editing === 'new') { await base44.entities.Tutor.create(data); flash('Tutor created.'); }
-    else { await base44.entities.Tutor.update(editing.id, data); flash('Tutor updated.'); }
+    if (editing === 'new') { await tutorsApi.create(data); flash('Tutor created.'); }
+    else { await tutorsApi.update(editing.id, data); flash('Tutor updated.'); }
     setSaving(false);
     setEditing(null);
     load();
   };
 
   const confirmDelete = async () => {
-    await base44.entities.Tutor.delete(deleteId);
+    await tutorsApi.remove(deleteId);
     setDeleteId(null);
     flash('Tutor deleted.');
     load();
@@ -139,10 +147,10 @@ export default function TutorManager({ isSuperAdmin }) {
                 <tr key={t.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-800">{t.full_name}</td>
                   <td className="px-4 py-3 text-slate-500">{t.email}</td>
-                  <td className="px-4 py-3 text-slate-500">{t.phone || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500">{t.phone || '-'}</td>
                   <td className="px-4 py-3 text-center">{t.approved ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">Yes</span> : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">No</span>}</td>
-                  <td className="px-4 py-3 text-center">{t.can_access_manager_dashboard ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">Yes</span> : '—'}</td>
-                  <td className="px-4 py-3 text-center">{t.is_super_admin ? <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">Yes</span> : '—'}</td>
+                  <td className="px-4 py-3 text-center">{t.can_access_manager_dashboard ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">Yes</span> : '-'}</td>
+                  <td className="px-4 py-3 text-center">{t.is_super_admin ? <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">Yes</span> : '-'}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>

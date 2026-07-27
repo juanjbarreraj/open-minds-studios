@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Pencil, Trash2, Check, X, ToggleLeft, ToggleRight } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { availabilityApi } from '@/api/availabilityApi';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -23,7 +23,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
     const err = validate(form);
     if (err) { setError(err); return; }
     setSaving(true);
-    await base44.entities.AvailabilitySlot.create({ ...form, tutor_id: tutorId });
+    await availabilityApi.create({ ...form, tutor_id: tutorId });
     setSaving(false);
     setAdding(false);
     setForm({ ...emptySlot });
@@ -35,7 +35,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
     const err = validate(editForm);
     if (err) { setError(err); return; }
     setSaving(true);
-    await base44.entities.AvailabilitySlot.update(id, editForm);
+    await availabilityApi.update(id, editForm);
     setSaving(false);
     setEditingId(null);
     setError('');
@@ -43,12 +43,12 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
   };
 
   const handleDelete = async (id) => {
-    await base44.entities.AvailabilitySlot.delete(id);
+    await availabilityApi.remove(id);
     onRefresh();
   };
 
   const handleToggle = async (slot) => {
-    await base44.entities.AvailabilitySlot.update(slot.id, { is_active: !slot.is_active });
+    await availabilityApi.update(slot.id, { is_active: !slot.is_active });
     onRefresh();
   };
 

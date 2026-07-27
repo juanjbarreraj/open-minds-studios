@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Star, Zap, Shield, Sparkles } from 'lucide-react';
 import SiteHeader from '../components/landing/SiteHeader.jsx';
-import SiteFooter from '../components/landing/SiteFooter';
 import { motion } from 'framer-motion';
 
 const tiers = [
@@ -105,7 +104,7 @@ export default function SubscriptionPlans() {
   const [btnHovered, setBtnHovered] = useState(null);
 
   const handleTierClick = (tierName) => {
-    window.location.href = `/contact?program=${encodeURIComponent(tierName)}`;
+    navigate(`/contact?program=${encodeURIComponent(tierName)}`);
   };
 
   return (

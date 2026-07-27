@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { GraduationCap, BookOpen, ArrowRight, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import AuthModal from './AuthModal';
 
 export default function HeroSection() {
@@ -53,7 +53,7 @@ export default function HeroSection() {
             className="flex flex-col items-center gap-10"
           >
             <img
-              src="https://media.base44.com/images/public/69c3f3171ffea17f779ab7ec/2008f0116_logonobackground.png"
+              src="/assets/logo-no-background.png"
               alt="Open Minds Studios"
               className="w-80 sm:w-[28rem] md:w-[36rem] lg:w-[44rem] object-contain drop-shadow-sm select-none"
             />

@@ -12,7 +12,7 @@ export default function TodaysFocus() {
         <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Focus</div>
       </div>
       <div className="text-base font-semibold text-slate-800 mb-3">
-        SAT Math — timing strategy and no-calculator drills
+        SAT Math - timing strategy and no-calculator drills
       </div>
       <div className="h-2 rounded-full bg-white border border-slate-200">
         <div className="h-2 w-3/4 rounded-full" style={{ backgroundColor: 'rgb(98,191,161)' }} />

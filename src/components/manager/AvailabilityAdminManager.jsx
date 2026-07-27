@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { availabilityApi } from '@/api/availabilityApi';
+import { tutorsApi } from '@/api/tutorsApi';
 import { Plus, Pencil, Trash2, Check, X, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -19,7 +20,7 @@ export default function AvailabilityAdminManager() {
 
   const load = async () => {
     setLoading(true);
-    const [s, t] = await Promise.all([base44.entities.AvailabilitySlot.list(), base44.entities.Tutor.list()]);
+    const [s, t] = await Promise.all([availabilityApi.list(), tutorsApi.list()]);
     setSlots(s); setTutors(t); setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -29,22 +30,22 @@ export default function AvailabilityAdminManager() {
 
   const save = async () => {
     setSaving(true);
-    if (editing === 'new') { await base44.entities.AvailabilitySlot.create(form); flash('Slot created.'); }
-    else { await base44.entities.AvailabilitySlot.update(editing.id, form); flash('Slot updated.'); }
+    if (editing === 'new') { await availabilityApi.create(form); flash('Slot created.'); }
+    else { await availabilityApi.update(editing.id, form); flash('Slot updated.'); }
     setSaving(false); setEditing(null); load();
   };
 
   const confirmDelete = async () => {
-    await base44.entities.AvailabilitySlot.delete(deleteId);
+    await availabilityApi.remove(deleteId);
     setDeleteId(null); flash('Slot deleted.'); load();
   };
 
   const toggleActive = async (slot) => {
-    await base44.entities.AvailabilitySlot.update(slot.id, { is_active: !slot.is_active });
+    await availabilityApi.update(slot.id, { is_active: !slot.is_active });
     load();
   };
 
-  const getTutorName = (id) => tutors.find(t => t.id === id)?.full_name || '—';
+  const getTutorName = (id) => tutors.find(t => t.id === id)?.full_name || '-';
 
   const filtered = slots.filter(s =>
     (!filterTutor || s.tutor_id === filterTutor) &&

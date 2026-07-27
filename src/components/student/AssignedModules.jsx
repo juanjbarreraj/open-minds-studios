@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { BookOpen, ExternalLink, Upload, Loader2, CheckCircle, Star } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { modulesApi, moduleStatusLabel } from '@/api/modulesApi';
+import { filesApi } from '@/api/filesApi';
 
 const ACCEPTED_TYPES = '.pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt';
 
 const STATUS_STYLE = {
-  'Assigned': { bg: 'rgba(58,154,202,0.1)', color: 'rgb(30,100,160)', label: 'Assigned' },
-  'Submitted for grading': { bg: 'rgba(246,178,59,0.12)', color: 'rgb(160,110,10)', label: 'Submitted for grading' },
-  'Graded': { bg: 'rgba(98,191,161,0.12)', color: 'rgb(50,140,110)', label: 'Graded' },
+  assigned: { bg: 'rgba(58,154,202,0.1)', color: 'rgb(30,100,160)' },
+  submitted: { bg: 'rgba(246,178,59,0.12)', color: 'rgb(160,110,10)' },
+  graded: { bg: 'rgba(98,191,161,0.12)', color: 'rgb(50,140,110)' },
 };
 
 function ModuleCard({ mod, onRefresh }) {
@@ -17,21 +18,16 @@ function ModuleCard({ mod, onRefresh }) {
   const [submitted, setSubmitted] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const sc = STATUS_STYLE[mod.status] || STATUS_STYLE['Assigned'];
-  const canSubmit = mod.status === 'Assigned';
+  const sc = STATUS_STYLE[mod.status] || STATUS_STYLE.assigned;
+  const canSubmit = mod.status === 'assigned';
 
   const handleSubmit = async () => {
     if (!file) return;
     setUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
+    const { id: fileId } = await filesApi.upload(file);
     setUploading(false);
     setSubmitting(true);
-    await base44.entities.Module.update(mod.id, {
-      student_submission_url: file_url,
-      student_submission_name: file.name,
-      status: 'Submitted for grading',
-      submitted_at: new Date().toISOString(),
-    });
+    await modulesApi.submit(mod.id, fileId);
     setSubmitting(false);
     setSubmitted(true);
     setTimeout(() => onRefresh(), 1000);
@@ -56,7 +52,7 @@ function ModuleCard({ mod, onRefresh }) {
         </div>
         <span className="ml-3 shrink-0 rounded-full px-3 py-1 text-xs font-semibold"
           style={{ backgroundColor: sc.bg, color: sc.color }}>
-          {sc.label}
+          {moduleStatusLabel(mod.status)}
         </span>
       </button>
 
@@ -70,7 +66,7 @@ function ModuleCard({ mod, onRefresh }) {
           {/* Tutor's uploaded file */}
           {mod.file_url && (
             <a
-              href={mod.file_url}
+              href={filesApi.url(mod.file_url)}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 transition"
@@ -81,7 +77,7 @@ function ModuleCard({ mod, onRefresh }) {
           )}
 
           {/* Grade display */}
-          {mod.status === 'Graded' && (
+          {mod.status === 'graded' && (
             <div className="rounded-2xl border p-4 space-y-1"
               style={{ borderColor: 'rgba(98,191,161,0.3)', backgroundColor: 'rgba(98,191,161,0.06)' }}>
               <div className="flex items-center gap-2">
@@ -93,14 +89,14 @@ function ModuleCard({ mod, onRefresh }) {
           )}
 
           {/* Student submission */}
-          {mod.status === 'Submitted for grading' && mod.student_submission_url && (
+          {mod.status === 'submitted' && mod.student_submission_url && (
             <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-700">
               <CheckCircle className="h-4 w-4" />
-              Submitted — awaiting grade from your tutor.
+              Submitted - awaiting grade from your tutor.
             </div>
           )}
 
-          {/* Submit work — only if Assigned */}
+          {/* Submit work, only if assigned */}
           {canSubmit && (
             <div className="space-y-3 border-t border-slate-100 pt-3">
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Submit your work</div>

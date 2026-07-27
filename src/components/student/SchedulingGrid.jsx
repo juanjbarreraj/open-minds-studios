@@ -1,5 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { base44 } from '@/api/base44Client';
+import { tutorsApi } from '@/api/tutorsApi';
+import { availabilityApi } from '@/api/availabilityApi';
+import { bookingsApi } from '@/api/bookingsApi';
+import { coursesApi } from '@/api/coursesApi';
 import { Loader2, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import BookingModal from './BookingModal';
 import AppointmentDetailModal from './AppointmentDetailModal';
@@ -42,16 +45,23 @@ function getBookableHourSlots(tutorSlots) {
   return [...bookable].sort();
 }
 
-// Check if a 1-hour slot is already booked
-function isSlotBooked(bookings, tutorId, dayName, slotTime) {
-  const slotEnd = addMinutes(slotTime, 60);
+// Format a Date as local YYYY-MM-DD (avoids toISOString timezone shifts)
+function toLocalYMD(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+// Check if a 1-hour slot is already booked on the cell's calendar date
+function isSlotBooked(bookings, tutorId, cellDate, slotTime) {
+  const dateStr = toLocalYMD(cellDate);
+  const slotStart = timeToMins(slotTime);
+  const slotEnd = slotStart + 60;
   return bookings.find(b => {
-    if (b.tutor_id !== tutorId || b.preferred_day !== dayName) return false;
+    if (b.tutor_id !== tutorId || b.session_date !== dateStr) return false;
     if (!b.preferred_start_time) return false;
     // overlap: booking starts before slot ends AND booking ends after slot starts
-    const bStart = b.preferred_start_time;
-    const bEnd = b.preferred_end_time || addMinutes(bStart, 60);
-    return bStart < slotEnd && bEnd > slotTime;
+    const bStart = timeToMins(b.preferred_start_time);
+    const bEnd = b.preferred_end_time ? timeToMins(b.preferred_end_time) : bStart + 60;
+    return bStart < slotEnd && bEnd > slotStart;
   });
 }
 
@@ -95,15 +105,15 @@ export default function SchedulingGrid({ student }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     const [tutorData, slotData, bookingData, courseData] = await Promise.all([
-      base44.entities.Tutor.filter({ approved: true }),
-      base44.entities.AvailabilitySlot.list(),
-      base44.entities.Booking.list(),
-      base44.entities.Course.list(),
+      tutorsApi.list(),
+      availabilityApi.list(),
+      bookingsApi.busy(),
+      coursesApi.list(),
     ]);
     setTutors(tutorData.sort((a, b) => a.full_name.localeCompare(b.full_name)));
     setSlots(slotData.filter(s => s.is_active !== false));
-    // Only show active (non-cancelled, non-declined) bookings
-    setBookings(bookingData.filter(b => b.status !== 'Cancelled'));
+    // Busy rows from the server are only pending/confirmed bookings
+    setBookings(bookingData);
     setCourses(courseData);
     setLoading(false);
   }, []);
@@ -171,7 +181,7 @@ export default function SchedulingGrid({ student }) {
               <div className="flex flex-wrap gap-2">
                 {bookableSlots.map(slotTime => {
                   const cellKey = `${tutor.id}-${date.toDateString()}-${slotTime}`;
-                  const bookedBooking = isSlotBooked(bookings, tutor.id, dayName, slotTime);
+                  const bookedBooking = isSlotBooked(bookings, tutor.id, date, slotTime);
                   const isBooked = !!bookedBooking;
                   const isSelected = selectedCell?.cellKey === cellKey;
                   const endTime = addMinutes(slotTime, 60);
@@ -330,7 +340,7 @@ export default function SchedulingGrid({ student }) {
               <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-slate-200 text-slate-500">Past date</span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mb-1">All sessions are 1 hour. Click a slot to select it, then confirm your booking.</p>
+          <p className="text-xs text-slate-400 mb-1">All sessions are 1 hour. Click a slot to select it, then confirm your booking. Times are shown in Eastern Time (ET).</p>
           {renderDaySlots(selectedDay)}
         </div>
       )}

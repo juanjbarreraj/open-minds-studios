@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import React, { useState } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Loader2, ShieldX, LayoutDashboard, Users, BookOpen, Link2, Clock, CalendarDays, LogOut, ArrowLeft } from 'lucide-react';
 import SiteLogo from '../components/shared/SiteLogo';
+import AuthModal from '@/components/landing/AuthModal';
 import TutorManager from '../components/manager/TutorManager';
 import CourseManager from '../components/manager/CourseManager';
 import TutorCourseManager from '../components/manager/TutorCourseManager';
@@ -20,41 +21,29 @@ const TABS = [
 ];
 
 export default function ManagerDashboard() {
-  const [status, setStatus] = useState('loading');
-  const [tutor, setTutor] = useState(null);
+  const { user, tutor, isAuthenticated, isLoadingAuth, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('tutors');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const authed = await base44.auth.isAuthenticated();
-      if (!authed) { setStatus('no-auth'); return; }
-      const me = await base44.auth.me();
-      const tutors = await base44.entities.Tutor.filter({ email: me.email });
-      if (!tutors.length) { setStatus('no-tutor'); return; }
-      const t = tutors[0];
-      setTutor(t);
-      if (!t.approved) { setStatus('not-approved'); return; }
-      if (!t.can_access_manager_dashboard && !t.is_super_admin) { setStatus('no-permission'); return; }
-      setStatus('authorized');
-    })();
-  }, []);
-
-  if (status === 'loading') return (
+  if (isLoadingAuth) return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50">
       <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
     </div>
   );
 
-  if (status === 'no-auth') return (
+  if (!isAuthenticated) return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6 text-center gap-4">
       <ShieldX className="h-12 w-12 text-slate-300" />
       <h1 className="text-xl font-bold text-slate-800">Authentication Required</h1>
-      <button onClick={() => base44.auth.redirectToLogin()} className="rounded-2xl bg-indigo-600 px-8 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Sign In</button>
+      <button onClick={() => setShowAuthModal(true)} className="rounded-2xl bg-indigo-600 px-8 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Sign In</button>
+      {showAuthModal && <AuthModal type="tutor" onClose={() => setShowAuthModal(false)} />}
     </div>
   );
 
-  if (status !== 'authorized') return (
+  const hasAccess = tutor?.can_access_manager_dashboard || tutor?.is_super_admin || user.role === 'manager' || user.role === 'admin';
+
+  if (!hasAccess) return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6 text-center gap-4">
       <ShieldX className="h-12 w-12 text-red-300" />
       <h1 className="text-2xl font-bold text-slate-800">Access Denied</h1>
@@ -64,6 +53,8 @@ export default function ManagerDashboard() {
       </Link>
     </div>
   );
+
+  const isSuperAdmin = tutor?.is_super_admin || user.role === 'admin';
 
   const ActiveComponent = {
     tutors: TutorManager,
@@ -104,7 +95,7 @@ export default function ManagerDashboard() {
           <Link to="/tutor-dashboard" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-50">
             <ArrowLeft className="h-4 w-4" /> Tutor Dashboard
           </Link>
-          <button onClick={() => base44.auth.logout()} className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-50">
+          <button onClick={() => logout()} className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-50">
             <LogOut className="h-4 w-4" /> Sign Out
           </button>
         </div>
@@ -122,13 +113,13 @@ export default function ManagerDashboard() {
             </button>
             <div>
               <span className="font-semibold text-slate-800">{TABS.find(t => t.id === activeTab)?.label}</span>
-              {tutor?.is_super_admin && <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700">Super Admin</span>}
+              {isSuperAdmin && <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700">Super Admin</span>}
             </div>
           </div>
-          <div className="text-sm text-slate-500 hidden sm:block">{tutor?.full_name}</div>
+          <div className="text-sm text-slate-500 hidden sm:block">{tutor?.full_name || user.full_name}</div>
         </header>
         <main className="flex-1 p-6">
-          <ActiveComponent isSuperAdmin={tutor?.is_super_admin} currentTutorId={tutor?.id} />
+          <ActiveComponent isSuperAdmin={isSuperAdmin} currentTutorId={tutor?.id} />
         </main>
       </div>
     </div>
