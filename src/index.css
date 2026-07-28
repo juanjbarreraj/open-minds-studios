@@ -204,6 +204,41 @@
 
   .text-balance { text-wrap: balance; }
   .text-pretty { text-wrap: pretty; }
+
+  /* ---- Depth and texture ------------------------------------------------
+     CSS handles the static visual texture; Framer Motion only ever animates
+     transform and opacity on top of it. */
+
+  /* Extremely subtle grain so large light surfaces do not read as dead
+     white. SVG turbulence at 2 to 3 percent opacity: depth, not noise. */
+  .bg-noise::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.028;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Soft vignette that settles the composition toward the centre. */
+  .bg-vignette::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 90% at 50% 42%, transparent 55%, rgba(15, 23, 42, 0.035) 100%);
+  }
+
+  /* Layered hero lighting: diffused teal upper left, blue upper right, a
+     whisper of orange warmth low centre. Values stay far below full
+     strength so the logo owns the screen. */
+  .bg-intro-light {
+    background-image:
+      radial-gradient(48% 42% at 12% 8%, rgba(98, 193, 161, 0.16) 0%, transparent 65%),
+      radial-gradient(44% 40% at 88% 12%, rgba(58, 154, 202, 0.14) 0%, transparent 65%),
+      radial-gradient(50% 36% at 50% 100%, rgba(239, 121, 57, 0.07) 0%, transparent 70%),
+      radial-gradient(70% 55% at 50% 45%, rgba(16, 95, 166, 0.045) 0%, transparent 75%);
+  }
 }
 
 /* ---------------------------------------------------------------------------

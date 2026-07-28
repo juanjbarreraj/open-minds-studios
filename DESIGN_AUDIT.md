@@ -102,3 +102,18 @@ Not started in this pass, and still carrying the issues described above:
 
 These remain accurate descriptions of the current interface and are the
 natural next group of work.
+
+## Second pass: logo-first opening experience
+
+The first redesign kept a conventional two-column hero (headline left, login
+card right), which read as a generic SaaS template regardless of how well the
+tokens underneath it were built. It was replaced outright.
+
+| Item | Before | After |
+|---|---|---|
+| First screen | Two-column: oversized headline and eyebrow pill left, white login panel right | Single centered composition: full brand mark near the visual centre, two portal buttons beneath, nothing competing |
+| Marketing copy | "Personalized Tutoring Gets Results" as the opening visual | Moved below the fold into its own band, where it supports rather than competes |
+| Login affordance | Two rows inside a bordered white card | Two standalone tactile buttons, gradient filled with an edge highlight and layered shadow |
+| Entrance | Ad-hoc per element, replayed on every mount | One ~2.5s choreography in `useIntroTiming`, once per browser session |
+| Background | Two faint blobs on near-white | Layered radial lighting (teal, blue, orange warmth), SVG grain at 2.8 percent, soft vignette |
+| Header | Plain links with inline colour swap on hover | `AnimatedNavLink` with a scale-x underline, active state, staggered intro, layered CTA, 44px mobile toggle |

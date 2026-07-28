@@ -1,8 +1,91 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { GraduationCap, BookOpen, ArrowRight, CheckCircle2, ChevronDown } from 'lucide-react';
+import { GraduationCap, BookOpen, ChevronDown, ArrowRight, CheckCircle2 } from 'lucide-react';
 import AuthModal from './AuthModal';
-import { useMotion, EASE_OUT } from '@/lib/motion';
+import AnimatedLogo from './AnimatedLogo';
+import PortalLoginButton from './PortalLoginButton';
+import { useIntroTiming, useMotion, revealProps } from '@/lib/motion';
+
+/**
+ * IntroHero: the logo-first opening screen.
+ *
+ * One centered composition: the full brand mark near the visual centre of the
+ * viewport below the header, the two portal actions underneath, and layered
+ * brand lighting behind everything. No marketing copy competes with the logo;
+ * the headline lives in the section below the fold.
+ *
+ * The ~2.5s entrance runs once per browser session (useIntroTiming); later
+ * visits get a quick fade. Reduced motion collapses to a short opacity change.
+ */
+export default function HeroSection() {
+  const [authType, setAuthType] = useState(null);
+  const intro = useIntroTiming();
+  const m = useMotion();
+
+  return (
+    <>
+      <section
+        className="bg-noise bg-vignette relative isolate flex flex-col overflow-hidden"
+        style={{ minHeight: 'calc(100svh - 73px)' }}
+      >
+        {/* Layered lighting: teal upper left, blue upper right, faint orange
+            warmth at the bottom. Fades in during the first 0.4s. */}
+        <motion.div
+          {...intro.lighting}
+          aria-hidden="true"
+          className="bg-intro-light pointer-events-none absolute inset-0 -z-10"
+        />
+
+        {/* Blurred background shapes, barely there; depth without circles. */}
+        <motion.div {...intro.lighting} aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute -left-32 top-1/4 h-[30rem] w-[30rem] rounded-full bg-brand/[0.07] blur-[90px]" />
+          <div className="absolute -right-32 top-1/3 h-[26rem] w-[26rem] rounded-full bg-brand-blue/[0.07] blur-[90px]" />
+        </motion.div>
+
+        {/* Centered composition */}
+        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 pb-16 pt-6">
+          <AnimatedLogo logoMotion={intro.logo} glowMotion={intro.glow} />
+
+          <div className="mt-2 flex w-full max-w-sm flex-col items-center justify-center gap-4 sm:max-w-none sm:flex-row md:mt-4">
+            <motion.div {...intro.button(0)} className="w-full sm:w-auto">
+              <PortalLoginButton theme="student" icon={GraduationCap} onClick={() => setAuthType('student')}>
+                Student / Parent Login
+              </PortalLoginButton>
+            </motion.div>
+            <motion.div {...intro.button(1)} className="w-full sm:w-auto">
+              <PortalLoginButton theme="tutor" icon={BookOpen} onClick={() => setAuthType('tutor')}>
+                Tutor Login
+              </PortalLoginButton>
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Scroll hint settles in at the tail of the intro. Decorative. */}
+        <motion.div
+          {...intro.button(2)}
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-7 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5"
+        >
+          <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ink-400">
+            Scroll to explore
+          </span>
+          <motion.span
+            animate={intro.reduced ? undefined : { y: [0, 5, 0] }}
+            transition={intro.reduced ? undefined : { repeat: Infinity, duration: 2.2, ease: 'easeInOut' }}
+          >
+            <ChevronDown className="h-4 w-4 text-ink-400" />
+          </motion.span>
+        </motion.div>
+      </section>
+
+      {/* The message the old hero carried, now below the fold where it does
+          not compete with the brand mark. */}
+      <HeroMessage m={m} />
+
+      <AuthModal type={authType} onClose={() => setAuthType(null)} />
+    </>
+  );
+}
 
 const TRUST_POINTS = [
   'One-on-one sessions',
@@ -10,165 +93,45 @@ const TRUST_POINTS = [
   'Progress you can actually see',
 ];
 
-const PORTALS = [
-  {
-    type: 'student',
-    title: 'Student and Parent',
-    description: 'Book sessions, track progress, and pick up assigned work.',
-    icon: GraduationCap,
-    accent: 'rgb(var(--brand-primary))',
-    tint: 'rgba(98, 191, 161, 0.1)',
-  },
-  {
-    type: 'tutor',
-    title: 'Tutor',
-    description: 'Manage availability, appointments, and student modules.',
-    icon: BookOpen,
-    accent: 'rgb(var(--brand-secondary))',
-    tint: 'rgba(58, 154, 202, 0.1)',
-  },
-];
-
-export default function HeroSection() {
-  const [authType, setAuthType] = useState(null);
-  const m = useMotion();
-
-  // One staged entrance, finishing well under a second so the page never
-  // feels like it is holding the reader up.
-  const stage = (delay) =>
-    m.reduced
-      ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } }
-      : {
-          initial: { opacity: 0, y: 18 },
-          animate: { opacity: 1, y: 0 },
-          transition: { duration: 0.5, delay, ease: EASE_OUT },
-        };
-
+function HeroMessage({ m }) {
   return (
-    <>
-      <section className="relative isolate overflow-hidden bg-white bg-brand-glow">
-        {/* Decorative only. Static gradients, no looping animation. */}
-        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-          <div className="absolute -top-32 -left-24 h-[26rem] w-[26rem] rounded-full bg-brand/10 blur-3xl" />
-          <div className="absolute -bottom-40 -right-20 h-[24rem] w-[24rem] rounded-full bg-brand-blue/10 blur-3xl" />
+    <section className="relative bg-white">
+      <div className="section-seam absolute inset-x-0 top-0 h-px" aria-hidden="true" />
+      <motion.div
+        {...revealProps(m)}
+        className="mx-auto flex w-full max-w-7xl flex-col items-start gap-8 px-6 py-16 md:flex-row md:items-center md:justify-between md:py-20"
+      >
+        <div className="max-w-2xl">
+          <h1 className="text-h1 text-ink-900">
+            Personalized Tutoring Gets <span className="text-brand-amber-deep">Results</span>
+          </h1>
+          <p className="mt-4 max-w-measure text-lead text-ink-600 text-pretty">
+            We build the foundations behind the grade: clear instruction, steady practice,
+            and the confidence to work through a hard problem alone.
+          </p>
+          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2.5">
+            {TRUST_POINTS.map((point) => (
+              <li key={point} className="flex items-center gap-2 text-sm font-medium text-ink-700">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
+                {point}
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <div className="mx-auto grid w-full max-w-7xl items-center gap-14 px-6 py-20 md:py-28 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
-          {/* Message */}
-          <div>
-            <motion.div
-              {...stage(0.05)}
-              className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-4 py-1.5"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
-              <span className="text-eyebrow uppercase text-brand-deep">
-                Math, homework, and test prep
-              </span>
-            </motion.div>
-
-            <motion.h1 {...stage(0.12)} className="mt-6 max-w-[13ch] text-display text-ink-900">
-              Personalized Tutoring Gets{' '}
-              <span className="text-brand-amber-deep">Results</span>
-            </motion.h1>
-
-            <motion.p {...stage(0.19)} className="mt-6 max-w-measure text-lead text-ink-600 text-pretty">
-              We build the foundations behind the grade: clear instruction, steady practice,
-              and the confidence to work through a hard problem alone.
-            </motion.p>
-
-            <motion.ul {...stage(0.26)} className="mt-8 flex flex-wrap gap-x-6 gap-y-3">
-              {TRUST_POINTS.map((point) => (
-                <li key={point} className="flex items-center gap-2 text-sm font-medium text-ink-700">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
-                  {point}
-                </li>
-              ))}
-            </motion.ul>
-
-            <motion.div {...stage(0.33)} className="mt-9">
-              <a
-                href="/contact"
-                className="inline-flex min-h-[52px] items-center gap-2 rounded-2xl bg-brand-amber px-7 text-base font-semibold text-ink-900 shadow-elev-2 transition-colors duration-fast ease-brand-out hover:bg-brand-amber-deep hover:text-white"
-              >
-                Book a free consultation
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </a>
-            </motion.div>
-          </div>
-
-          {/* Portal choices. These are the primary action for a returning
-              family or tutor, so they get real visual weight. */}
-          <motion.div {...stage(0.22)} className="w-full">
-            <div className="rounded-[var(--radius-xl)] border border-slate-200/80 bg-white/85 p-6 shadow-elev-3 backdrop-blur-sm sm:p-7">
-              <img
-                src="/assets/logo-no-background.png"
-                alt="Open Minds Studios"
-                width="320"
-                height="214"
-                className="mx-auto mb-6 w-48 select-none object-contain sm:w-56"
-              />
-
-              <h2 className="text-sm font-bold text-ink-900">Already with Open Minds?</h2>
-              <p className="mt-1 text-sm text-ink-600">Sign in to your portal.</p>
-
-              <div className="mt-5 grid gap-3">
-                {PORTALS.map(({ type, title, description, icon: Icon, accent, tint }) => (
-                  <motion.button
-                    key={type}
-                    type="button"
-                    onClick={() => setAuthType(type)}
-                    whileHover={m.lift}
-                    whileTap={m.tap}
-                    className="group flex w-full items-center gap-4 rounded-[var(--radius-lg)] border border-slate-200 bg-white p-4 text-left shadow-elev-1 transition-[border-color,box-shadow] duration-hover ease-brand-out hover:border-brand/45 hover:shadow-elev-2"
-                  >
-                    <span
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-md)]"
-                      style={{ backgroundColor: tint }}
-                      aria-hidden="true"
-                    >
-                      <Icon className="h-5 w-5" style={{ color: accent }} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-ink-900">{title}</span>
-                      <span className="block text-xs leading-relaxed text-ink-600">{description}</span>
-                    </span>
-                    <ArrowRight
-                      className="h-4 w-4 shrink-0 text-ink-400 transition-transform duration-hover ease-brand-out group-hover:translate-x-1 group-hover:text-brand"
-                      aria-hidden="true"
-                    />
-                  </motion.button>
-                ))}
-              </div>
-
-              <p className="mt-4 text-xs text-ink-500">
-                New family? Start with a free consultation and we will set up your portal.
-              </p>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Scroll hint. The bounce is decorative, so it is dropped entirely
-            when reduced motion is requested rather than merely shortened. */}
-        <div className="flex justify-center pb-10">
-          <motion.div
-            {...stage(0.4)}
-            className="flex flex-col items-center gap-1.5"
-            aria-hidden="true"
-          >
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-400">
-              Scroll to explore
-            </span>
-            <motion.span
-              animate={m.reduced ? undefined : { y: [0, 5, 0] }}
-              transition={m.reduced ? undefined : { repeat: Infinity, duration: 2, ease: 'easeInOut' }}
-            >
-              <ChevronDown className="h-4 w-4 text-ink-400" />
-            </motion.span>
-          </motion.div>
-        </div>
-      </section>
-
-      <AuthModal type={authType} onClose={() => setAuthType(null)} />
-    </>
+        <a
+          href="/contact"
+          className="group inline-flex min-h-[52px] shrink-0 items-center gap-2 rounded-2xl px-7 text-base font-semibold text-ink-900 transition-[filter] duration-fast ease-brand-out hover:brightness-[1.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-amber-deep"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,0.28), rgba(255,255,255,0) 45%), linear-gradient(180deg, rgb(250,190,80) 0%, rgb(240,160,50) 100%)',
+            boxShadow: '0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 20px -8px rgba(240,160,50,0.65)',
+          }}
+        >
+          Book a free consultation
+          <ArrowRight className="h-4 w-4 transition-transform duration-hover ease-brand-out group-hover:translate-x-1" aria-hidden="true" />
+        </a>
+      </motion.div>
+    </section>
   );
 }
