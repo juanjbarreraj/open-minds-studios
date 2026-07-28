@@ -141,7 +141,7 @@ export default function SubscriptionPlans() {
         }}>
           Choose the Right Monthly Program
         </h1>
-        <p className="mt-3 text-sm text-slate-400">
+        <p className="mt-3 text-sm text-ink-500">
           Prefer pay-as-you-go? Sessions are also available at{' '}
           <span className="font-semibold" style={{ color: 'rgb(98,191,161)' }}>$35/hr</span> with no commitment.
         </p>
@@ -177,16 +177,15 @@ export default function SubscriptionPlans() {
                 transition: 'all 0.25s ease',
               }}
             >
-              {/* Shimmer overlay */}
+              {/* Hover sheen. Static gradient revealed on hover rather than a
+                  constantly looping animation. */}
               <div
                 className="absolute inset-0 rounded-2xl pointer-events-none"
                 style={{
-                  background: `linear-gradient(135deg, rgba(98,191,161,0.0) 0%, rgba(58,154,202,0.15) 50%, rgba(98,191,161,0.0) 100%)`,
-                  backgroundSize: '200% 200%',
-                  animation: 'shimmer 6s ease infinite',
+                  background: 'linear-gradient(135deg, rgba(98,191,161,0) 0%, rgba(58,154,202,0.13) 50%, rgba(98,191,161,0) 100%)',
                   zIndex: 0,
                   opacity: isHovered ? 1 : 0,
-                  transition: 'opacity 0.3s ease',
+                  transition: 'opacity var(--dur-hover) var(--ease-out)',
                 }}
               />
 
@@ -201,8 +200,9 @@ export default function SubscriptionPlans() {
                     <motion.span
                       className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold text-white"
                       style={{ backgroundColor: 'rgb(246,178,59)', boxShadow: '0 2px 10px rgba(246,178,59,0.5)' }}
-                      animate={{ y: [0, -2, 0] }}
-                      transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
                     >
                       <Star className="h-3 w-3 fill-white" /> Most Popular
                     </motion.span>

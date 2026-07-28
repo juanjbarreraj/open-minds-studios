@@ -58,7 +58,7 @@ export default function AppointmentScheduling() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
       <div className="text-center">
         <p className="text-slate-500">Access denied. Please contact your administrator.</p>
-        <Link to="/student-dashboard" className="mt-4 inline-block text-sm text-slate-400 underline">Back to Dashboard</Link>
+        <Link to="/student-dashboard" className="mt-4 inline-block text-sm text-ink-500 underline">Back to Dashboard</Link>
       </div>
     </div>
   );

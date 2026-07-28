@@ -77,13 +77,158 @@
 
 
 
+/* ---------------------------------------------------------------------------
+   Open Minds Studios design tokens
+
+   One source of truth for brand colour, tint, elevation, radius, motion, and
+   layering. Components reference these instead of repeating literal rgb()
+   values, so the whole product can be retuned from this block.
+   --------------------------------------------------------------------------- */
 @layer base {
+  :root {
+    /* Brand ------------------------------------------------------------- */
+    --brand-primary: 98 191 161;      /* teal green, the lead brand colour  */
+    --brand-primary-deep: 60 160 130; /* hover and text-on-light variant     */
+    --brand-secondary: 58 154 202;    /* blue, structure and links           */
+    --brand-secondary-deep: 16 95 166;
+    --brand-accent: 246 178 59;       /* orange, ~10% of the palette         */
+    --brand-accent-deep: 239 121 57;
+
+    /* Section tints. Deliberately faint so sections separate without
+       reading as solid blocks of colour. */
+    --tint-teal: rgba(98, 193, 161, 0.05);
+    --tint-blue: rgba(16, 95, 166, 0.04);
+    --tint-orange: rgba(239, 121, 57, 0.04);
+
+    /* Ink. Body copy sits at 600 so it clears 4.5:1 on white and on tints. */
+    --ink-900: 15 23 42;
+    --ink-700: 51 65 85;
+    --ink-600: 71 85 105;
+    --ink-500: 100 116 139;
+    --ink-400: 148 163 184;
+
+    /* Elevation. Layered rather than a single generic drop shadow, so
+       surfaces read as physically stacked. */
+    --elev-1:
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 1px 3px rgba(15, 23, 42, 0.05);
+    --elev-2:
+      0 2px 4px rgba(15, 23, 42, 0.04),
+      0 6px 16px -4px rgba(15, 23, 42, 0.08);
+    --elev-3:
+      0 4px 8px rgba(15, 23, 42, 0.04),
+      0 16px 32px -8px rgba(15, 23, 42, 0.12);
+    --elev-4:
+      0 8px 16px rgba(15, 23, 42, 0.06),
+      0 32px 64px -16px rgba(15, 23, 42, 0.18);
+    /* Brand-tinted glow for the primary action only. */
+    --elev-brand: 0 6px 20px -6px rgba(98, 191, 161, 0.5);
+
+    /* Radius. A consistent ladder; nothing becomes an oversized pill by
+       accident. */
+    --radius-sm: 0.5rem;
+    --radius-md: 0.875rem;
+    --radius-lg: 1.25rem;
+    --radius-xl: 1.75rem;
+    --radius-pill: 999px;
+
+    /* Motion. Durations follow the UX guidance: micro-interactions stay
+       under 300ms, only full section reveals approach 600ms. */
+    --dur-press: 120ms;
+    --dur-fast: 180ms;
+    --dur-hover: 220ms;
+    --dur-modal: 300ms;
+    --dur-section: 520ms;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in: cubic-bezier(0.64, 0, 0.78, 0);
+    --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+
+    /* Layering */
+    --z-base: 0;
+    --z-raised: 10;
+    --z-sticky: 20;
+    --z-overlay: 40;
+    --z-modal: 50;
+    --z-toast: 60;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
 
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 
+  /* Sticky header offset so anchor jumps do not hide headings underneath it. */
+  [id] {
+    scroll-margin-top: 6rem;
+  }
+
+  /* One visible, consistent keyboard focus treatment. Applied on
+     :focus-visible only, so pointer users never see a ring. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand-secondary));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+}
+
+@layer utilities {
+  /* Elevation utilities */
+  .elev-1 { box-shadow: var(--elev-1); }
+  .elev-2 { box-shadow: var(--elev-2); }
+  .elev-3 { box-shadow: var(--elev-3); }
+  .elev-4 { box-shadow: var(--elev-4); }
+
+  /* Section tints */
+  .bg-tint-teal { background-color: var(--tint-teal); }
+  .bg-tint-blue { background-color: var(--tint-blue); }
+  .bg-tint-orange { background-color: var(--tint-orange); }
+
+  /* Soft radial brand lighting for hero and feature sections. Decorative
+     only, and cheap: a static gradient, never an animated one. */
+  .bg-brand-glow {
+    background-image:
+      radial-gradient(60% 50% at 15% 0%, rgba(98, 191, 161, 0.13) 0%, transparent 60%),
+      radial-gradient(55% 45% at 85% 10%, rgba(58, 154, 202, 0.12) 0%, transparent 62%),
+      radial-gradient(40% 40% at 60% 100%, rgba(246, 178, 59, 0.08) 0%, transparent 65%);
+  }
+
+  /* Hairline that separates two sections without drawing a hard rule. */
+  .section-seam {
+    background-image: linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.08), transparent);
+  }
+
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion
+
+   Large movement, parallax, and decorative repetition are removed. Short
+   opacity changes are kept so state changes remain perceptible, and nothing
+   depends on motion to be usable. Framer Motion variants read the same
+   preference through useReducedMotion in src/lib/motion.js.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-press: 1ms;
+    --dur-fast: 1ms;
+    --dur-hover: 1ms;
+    --dur-modal: 1ms;
+    --dur-section: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

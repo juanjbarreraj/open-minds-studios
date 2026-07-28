@@ -250,7 +250,7 @@ export default function Services() {
                 key={num}
                 {...inView}
                 transition={{ duration: 0.5, delay: i * 0.07 }}
-                className="rounded-2xl border border-slate-200 bg-white p-6 hover:-translate-y-1 transition-all duration-200 hover:shadow-md"
+                className="rounded-[var(--radius-lg)] border border-slate-200/80 bg-white p-7 shadow-elev-1 transition-shadow duration-hover ease-brand-out hover:shadow-elev-2 hover:-translate-y-1 transition-all duration-200 hover:shadow-md"
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white mb-4"
                   style={{ background: 'linear-gradient(135deg, rgb(58,154,202), rgb(98,191,161))' }}>

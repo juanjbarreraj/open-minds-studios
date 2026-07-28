@@ -69,7 +69,8 @@ export default function ContactSection() {
   const inputCls = 'rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100';
 
   return (
-    <section id="contact" className="border-t border-slate-200" style={{ backgroundColor: 'rgba(16,95,166,0.04)' }}>
+    <section id="contact" className="relative bg-white bg-brand-glow">
+      <div className="section-seam absolute inset-x-0 top-0 h-px" aria-hidden="true" />
       <div className="mx-auto grid max-w-7xl gap-10 px-6 py-16 md:grid-cols-[0.95fr_1.05fr]">
         <motion.div {...inView}>
           <div className="text-sm font-semibold uppercase tracking-[0.2em]" style={{ color: 'rgb(98,191,161)' }}>Contact Us</div>

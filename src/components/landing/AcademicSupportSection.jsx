@@ -26,7 +26,8 @@ const solutions = [
 
 export default function AcademicSupportSection() {
   return (
-    <section id="academic-support" className="border-t border-slate-200" style={{ backgroundColor: 'rgba(16,95,166,0.04)' }}>
+    <section id="academic-support" className="relative bg-tint-blue">
+      <div className="section-seam absolute inset-x-0 top-0 h-px" aria-hidden="true" />
       <div className="mx-auto max-w-7xl px-6 py-16">
         <motion.div className="text-center max-w-2xl mx-auto mb-12" {...inView}>
           <div

@@ -26,7 +26,8 @@ const solutions = [
 
 export default function TestSupportSection() {
   return (
-    <section id="test-support" className="border-t border-slate-200" style={{ backgroundColor: 'rgba(98,193,161,0.05)' }}>
+    <section id="test-support" className="relative bg-tint-teal">
+      <div className="section-seam absolute inset-x-0 top-0 h-px" aria-hidden="true" />
       <div className="mx-auto max-w-7xl px-6 py-16">
         <motion.div className="text-center max-w-2xl mx-auto mb-12" {...inView}>
           <div

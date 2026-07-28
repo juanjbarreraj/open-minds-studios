@@ -19,6 +19,7 @@ import PaymentPolicy from './pages/PaymentPolicy.jsx';
 import Guide from './pages/Guide.jsx';
 import Register from './pages/Register.jsx';
 import { Navigate } from 'react-router-dom';
+import PageTransition from '@/components/ui/page-transition';
 // Add page imports here
 
 // Public pages render immediately; protected pages (dashboards) handle their
@@ -31,21 +32,21 @@ function App() {
         <Router>
           <Routes>
             <Route path="/" element={<Navigate to="/Home" replace />} />
-            <Route path="/Home" element={<Home />} />
-            <Route path="/tutor-dashboard" element={<TutorDashboard />} />
-            <Route path="/manager-dashboard" element={<ManagerDashboard />} />
-            <Route path="/student-dashboard" element={<StudentDashboard />} />
-            <Route path="/subscription-plans" element={<SubscriptionPlans />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/services" element={<Services />} />
-            <Route path="/appointment-scheduling" element={<AppointmentScheduling />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/terms-of-service" element={<TermsOfService />} />
-            <Route path="/payment-policy" element={<PaymentPolicy />} />
-            <Route path="/guide" element={<Guide />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="*" element={<PageNotFound />} />
+            <Route path="/Home" element={<PageTransition><Home /></PageTransition>} />
+            <Route path="/tutor-dashboard" element={<PageTransition><TutorDashboard /></PageTransition>} />
+            <Route path="/manager-dashboard" element={<PageTransition><ManagerDashboard /></PageTransition>} />
+            <Route path="/student-dashboard" element={<PageTransition><StudentDashboard /></PageTransition>} />
+            <Route path="/subscription-plans" element={<PageTransition><SubscriptionPlans /></PageTransition>} />
+            <Route path="/contact" element={<PageTransition><Contact /></PageTransition>} />
+            <Route path="/about" element={<PageTransition><About /></PageTransition>} />
+            <Route path="/services" element={<PageTransition><Services /></PageTransition>} />
+            <Route path="/appointment-scheduling" element={<PageTransition><AppointmentScheduling /></PageTransition>} />
+            <Route path="/privacy-policy" element={<PageTransition><PrivacyPolicy /></PageTransition>} />
+            <Route path="/terms-of-service" element={<PageTransition><TermsOfService /></PageTransition>} />
+            <Route path="/payment-policy" element={<PageTransition><PaymentPolicy /></PageTransition>} />
+            <Route path="/guide" element={<PageTransition><Guide /></PageTransition>} />
+            <Route path="/register" element={<PageTransition><Register /></PageTransition>} />
+            <Route path="*" element={<PageTransition><PageNotFound /></PageTransition>} />
           </Routes>
         </Router>
         <Toaster />

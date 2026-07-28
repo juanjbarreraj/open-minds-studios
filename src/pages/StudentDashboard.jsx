@@ -76,7 +76,7 @@ export default function StudentDashboard() {
           <div className="mt-6 rounded-2xl bg-slate-50 px-5 py-3 text-sm text-slate-500">
             Logged in as <span className="font-medium text-slate-700">{user?.email}</span>
           </div>
-          <Link to="/" className="mt-6 inline-block text-sm text-slate-400 hover:text-slate-700 underline underline-offset-2">
+          <Link to="/" className="mt-6 inline-block text-sm text-ink-500 hover:text-slate-700 underline underline-offset-2">
             Back to Home
           </Link>
         </div>

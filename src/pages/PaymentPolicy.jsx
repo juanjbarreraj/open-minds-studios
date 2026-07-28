@@ -24,7 +24,7 @@ export default function PaymentPolicy() {
             }}>
               Payment &amp; Cancellation Policy
             </h1>
-            <p className="mt-4 text-sm text-slate-400">
+            <p className="mt-4 text-sm text-ink-500">
               Effective Date: January 1, 2026
             </p>
           </div>

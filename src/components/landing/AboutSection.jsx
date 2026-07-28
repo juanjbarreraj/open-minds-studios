@@ -8,7 +8,7 @@ function PricingCard() {
   const navigate = useNavigate();
   return (
     <div
-      className="rounded-3xl p-6 cursor-pointer transition-all duration-[250ms] ease-out hover:-translate-y-2 hover:shadow-xl group"
+      className="rounded-3xl p-6 cursor-pointer transition-all duration-hover ease-out hover:-translate-y-2 hover:shadow-xl group"
       style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(255,255,255,0.72)', border: '1.5px solid rgba(98,191,161,0.45)', boxShadow: '0 4px 24px rgba(98,191,161,0.1)' }}
       onClick={() => navigate('/subscription-plans')}>
       
@@ -31,7 +31,8 @@ function PricingCard() {
 
 export default function AboutSection() {
   return (
-    <section id="about" className="border-y border-slate-200" style={{ backgroundColor: 'rgba(239,121,57,0.04)' }}>
+    <section id="about" className="relative bg-tint-orange">
+      <div className="section-seam absolute inset-x-0 top-0 h-px" aria-hidden="true" />
       <div className="mx-auto grid max-w-7xl gap-10 px-6 py-16 md:grid-cols-[1.1fr_0.9fr]">
         <motion.div {...inView}>
           <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">About the center</div>

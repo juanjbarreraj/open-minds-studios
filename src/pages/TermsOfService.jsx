@@ -24,7 +24,7 @@ export default function TermsOfService() {
             }}>
               Enrollment Agreement &amp; Terms of Service
             </h1>
-            <p className="mt-4 text-sm text-slate-400">
+            <p className="mt-4 text-sm text-ink-500">
               Effective Date: January 1, 2026
             </p>
           </div>

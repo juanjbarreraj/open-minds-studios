@@ -73,7 +73,7 @@ export default function PortalSection() {
             {recentProgress.map((item) => (
               <div
                 key={item.label}
-                className="rounded-2xl p-4 transition-all duration-[250ms] ease-out hover:-translate-y-1 hover:shadow-xl"
+                className="rounded-2xl p-4 transition-all duration-hover ease-out hover:-translate-y-1 hover:shadow-xl"
                 style={{ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.4)', borderTop: '3px solid rgb(98,191,161)', boxShadow: '0 2px 16px rgba(0,0,0,0.06)' }}
               >
                 <div className="text-xs text-slate-500">{item.label}</div>
@@ -121,7 +121,7 @@ export default function PortalSection() {
                 {upcomingSessions.map((session) => (
                   <div
                     key={`${session.date}-${session.time}`}
-                    className="flex items-center justify-between rounded-2xl p-3.5 transition-all duration-[250ms] ease-out hover:-translate-y-1"
+                    className="flex items-center justify-between rounded-2xl p-3.5 transition-all duration-hover ease-out hover:-translate-y-1"
                     style={{ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.4)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}
                   >
                     <div>
@@ -152,7 +152,7 @@ export default function PortalSection() {
               </div>
               <div className="space-y-3">
                 {prepModules.map((mod) => (
-                  <div key={mod.title} className="rounded-2xl p-3.5 transition-all duration-[250ms] ease-out hover:-translate-y-1" style={{ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.4)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+                  <div key={mod.title} className="rounded-2xl p-3.5 transition-all duration-hover ease-out hover:-translate-y-1" style={{ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.4)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
                         <div className="text-sm font-semibold text-slate-800">{mod.title}</div>

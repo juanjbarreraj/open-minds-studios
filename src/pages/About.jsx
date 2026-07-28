@@ -113,7 +113,7 @@ export default function About() {
               key={label}
               {...inView}
               transition={{ duration: 0.5, delay: i * 0.07 }}
-              className="rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+              className="rounded-[var(--radius-lg)] border border-slate-200/80 bg-white p-7 shadow-elev-1 transition-all duration-hover ease-brand-out hover:-translate-y-1 hover:shadow-elev-3">
               
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: 'rgba(98,191,161,0.1)' }}>
                   <Icon className="h-5 w-5" style={{ color: 'rgb(98,191,161)' }} />

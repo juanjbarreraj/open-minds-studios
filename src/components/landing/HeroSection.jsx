@@ -1,108 +1,172 @@
-import React, { useState, useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { GraduationCap, BookOpen, ArrowRight, CheckCircle2, ChevronDown } from 'lucide-react';
 import AuthModal from './AuthModal';
+import { useMotion, EASE_OUT } from '@/lib/motion';
+
+const TRUST_POINTS = [
+  'One-on-one sessions',
+  'Tutors matched to your goals',
+  'Progress you can actually see',
+];
+
+const PORTALS = [
+  {
+    type: 'student',
+    title: 'Student and Parent',
+    description: 'Book sessions, track progress, and pick up assigned work.',
+    icon: GraduationCap,
+    accent: 'rgb(var(--brand-primary))',
+    tint: 'rgba(98, 191, 161, 0.1)',
+  },
+  {
+    type: 'tutor',
+    title: 'Tutor',
+    description: 'Manage availability, appointments, and student modules.',
+    icon: BookOpen,
+    accent: 'rgb(var(--brand-secondary))',
+    tint: 'rgba(58, 154, 202, 0.1)',
+  },
+];
 
 export default function HeroSection() {
   const [authType, setAuthType] = useState(null);
-  const introRef = useRef(null);
+  const m = useMotion();
 
-  const { scrollY } = useScroll();
-  const opacity = useTransform(scrollY, [0, 300], [1, 0]);
-  const y = useTransform(scrollY, [0, 300], [0, -60]);
+  // One staged entrance, finishing well under a second so the page never
+  // feels like it is holding the reader up.
+  const stage = (delay) =>
+    m.reduced
+      ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } }
+      : {
+          initial: { opacity: 0, y: 18 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.5, delay, ease: EASE_OUT },
+        };
 
   return (
     <>
-      {/* ── Full-screen logo intro ── */}
-      <div ref={introRef} className="relative" style={{ height: '100vh' }}>
-        <motion.div
-          style={{ opacity, y }}
-          className="sticky top-0 flex h-screen w-full flex-col items-center justify-center"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1.1, ease: 'easeOut' }}
-        >
-          {/* Radial gradient background */}
-          <div
-            className="absolute inset-0 -z-10"
-            style={{
-              background:
-                'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(98,191,161,0.10) 0%, rgba(58,154,202,0.06) 45%, #f8fafc 100%)',
-            }}
-          />
+      <section className="relative isolate overflow-hidden bg-white bg-brand-glow">
+        {/* Decorative only. Static gradients, no looping animation. */}
+        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+          <div className="absolute -top-32 -left-24 h-[26rem] w-[26rem] rounded-full bg-brand/10 blur-3xl" />
+          <div className="absolute -bottom-40 -right-20 h-[24rem] w-[24rem] rounded-full bg-brand-blue/10 blur-3xl" />
+        </div>
 
-          {/* Subtle decorative blobs */}
-          <div className="pointer-events-none absolute inset-0 overflow-hidden -z-10">
-            <div style={{
-              position: 'absolute', top: '15%', left: '8%', width: '320px', height: '320px',
-              background: 'radial-gradient(circle, rgba(98,191,161,0.08) 0%, transparent 70%)',
-              borderRadius: '50%', filter: 'blur(50px)',
-            }} />
-            <div style={{
-              position: 'absolute', bottom: '15%', right: '8%', width: '280px', height: '280px',
-              background: 'radial-gradient(circle, rgba(58,154,202,0.08) 0%, transparent 70%)',
-              borderRadius: '50%', filter: 'blur(50px)',
-            }} />
+        <div className="mx-auto grid w-full max-w-7xl items-center gap-14 px-6 py-20 md:py-28 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
+          {/* Message */}
+          <div>
+            <motion.div
+              {...stage(0.05)}
+              className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-4 py-1.5"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
+              <span className="text-eyebrow uppercase text-brand-deep">
+                Math, homework, and test prep
+              </span>
+            </motion.div>
+
+            <motion.h1 {...stage(0.12)} className="mt-6 max-w-[13ch] text-display text-ink-900">
+              Personalized Tutoring Gets{' '}
+              <span className="text-brand-amber-deep">Results</span>
+            </motion.h1>
+
+            <motion.p {...stage(0.19)} className="mt-6 max-w-measure text-lead text-ink-600 text-pretty">
+              We build the foundations behind the grade: clear instruction, steady practice,
+              and the confidence to work through a hard problem alone.
+            </motion.p>
+
+            <motion.ul {...stage(0.26)} className="mt-8 flex flex-wrap gap-x-6 gap-y-3">
+              {TRUST_POINTS.map((point) => (
+                <li key={point} className="flex items-center gap-2 text-sm font-medium text-ink-700">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
+                  {point}
+                </li>
+              ))}
+            </motion.ul>
+
+            <motion.div {...stage(0.33)} className="mt-9">
+              <a
+                href="/contact"
+                className="inline-flex min-h-[52px] items-center gap-2 rounded-2xl bg-brand-amber px-7 text-base font-semibold text-ink-900 shadow-elev-2 transition-colors duration-fast ease-brand-out hover:bg-brand-amber-deep hover:text-white"
+              >
+                Book a free consultation
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </a>
+            </motion.div>
           </div>
 
-          {/* Logo */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.88 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1.0, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="flex flex-col items-center gap-10"
-          >
-            <img
-              src="/assets/logo-no-background.png"
-              alt="Open Minds Studios"
-              className="w-80 sm:w-[28rem] md:w-[36rem] lg:w-[44rem] object-contain drop-shadow-sm select-none"
-            />
+          {/* Portal choices. These are the primary action for a returning
+              family or tutor, so they get real visual weight. */}
+          <motion.div {...stage(0.22)} className="w-full">
+            <div className="rounded-[var(--radius-xl)] border border-slate-200/80 bg-white/85 p-6 shadow-elev-3 backdrop-blur-sm sm:p-7">
+              <img
+                src="/assets/logo-no-background.png"
+                alt="Open Minds Studios"
+                width="320"
+                height="214"
+                className="mx-auto mb-6 w-48 select-none object-contain sm:w-56"
+              />
 
-            {/* Login buttons */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.9 }}
-              className="flex flex-col items-center gap-4 sm:flex-row"
-            >
-              <button
-                onClick={() => setAuthType('student')}
-                className="rounded-2xl px-10 py-4 text-base font-semibold text-white shadow-md transition-all duration-200"
-                style={{ backgroundColor: 'rgb(98,191,161)', minWidth: '200px' }}
-                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgb(70,165,135)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgb(98,191,161)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-              >
-                Student / Parent Login
-              </button>
-              <button
-                onClick={() => setAuthType('tutor')}
-                className="rounded-2xl px-10 py-4 text-base font-semibold text-white shadow-md transition-all duration-200"
-                style={{ backgroundColor: 'rgb(58,154,202)', minWidth: '160px' }}
-                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgb(40,120,170)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgb(58,154,202)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-              >
-                Tutor Login
-              </button>
-            </motion.div>
-          </motion.div>
+              <h2 className="text-sm font-bold text-ink-900">Already with Open Minds?</h2>
+              <p className="mt-1 text-sm text-ink-600">Sign in to your portal.</p>
 
-          {/* Scroll hint */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.8, delay: 1.4 }}
-            className="absolute bottom-10 flex flex-col items-center gap-2"
-          >
-            <span className="text-xs font-medium uppercase tracking-widest text-slate-400">Scroll to explore</span>
-            <motion.div
-              animate={{ y: [0, 6, 0] }}
-              transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
-            >
-              <ChevronDown className="h-5 w-5 text-slate-300" />
-            </motion.div>
+              <div className="mt-5 grid gap-3">
+                {PORTALS.map(({ type, title, description, icon: Icon, accent, tint }) => (
+                  <motion.button
+                    key={type}
+                    type="button"
+                    onClick={() => setAuthType(type)}
+                    whileHover={m.lift}
+                    whileTap={m.tap}
+                    className="group flex w-full items-center gap-4 rounded-[var(--radius-lg)] border border-slate-200 bg-white p-4 text-left shadow-elev-1 transition-[border-color,box-shadow] duration-hover ease-brand-out hover:border-brand/45 hover:shadow-elev-2"
+                  >
+                    <span
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-md)]"
+                      style={{ backgroundColor: tint }}
+                      aria-hidden="true"
+                    >
+                      <Icon className="h-5 w-5" style={{ color: accent }} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-ink-900">{title}</span>
+                      <span className="block text-xs leading-relaxed text-ink-600">{description}</span>
+                    </span>
+                    <ArrowRight
+                      className="h-4 w-4 shrink-0 text-ink-400 transition-transform duration-hover ease-brand-out group-hover:translate-x-1 group-hover:text-brand"
+                      aria-hidden="true"
+                    />
+                  </motion.button>
+                ))}
+              </div>
+
+              <p className="mt-4 text-xs text-ink-500">
+                New family? Start with a free consultation and we will set up your portal.
+              </p>
+            </div>
           </motion.div>
-        </motion.div>
-      </div>
+        </div>
+
+        {/* Scroll hint. The bounce is decorative, so it is dropped entirely
+            when reduced motion is requested rather than merely shortened. */}
+        <div className="flex justify-center pb-10">
+          <motion.div
+            {...stage(0.4)}
+            className="flex flex-col items-center gap-1.5"
+            aria-hidden="true"
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-400">
+              Scroll to explore
+            </span>
+            <motion.span
+              animate={m.reduced ? undefined : { y: [0, 5, 0] }}
+              transition={m.reduced ? undefined : { repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+            >
+              <ChevronDown className="h-4 w-4 text-ink-400" />
+            </motion.span>
+          </motion.div>
+        </div>
+      </section>
 
       <AuthModal type={authType} onClose={() => setAuthType(null)} />
     </>
