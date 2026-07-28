@@ -144,6 +144,93 @@ and the confirmed defects were fixed. Grouped by what they affected:
 | The user guide still walked people through the removed hosted login, including "Continue to Sign In" and Google sign-in, neither of which exists now | Sign-in steps rewritten for the local email and password modal, including where approval fits. |
 | Seven em dashes remained in visible platform text, against the platform text rule | Replaced with commas or colons; no em dash remains anywhere in `src/` or `index.html`. |
 
+## Final independent audit and hardening pass
+
+A further independent audit of the migrated application found privilege,
+identity, scheduling, and security gaps that the earlier passes had not
+covered, plus two areas still showing placeholder data. All were fixed on
+branch `migration/remove-base44`. No hosted service was introduced: the stack
+is still React/Vite, Express, SQLite, and local uploads.
+
+### Privilege boundaries around elevated profiles
+
+Blocking only the `is_super_admin` and `can_access_manager_dashboard` fields
+left every other route to the same outcome open. A regular manager could edit
+an elevated profile's email, unapprove it, unlink it, relink it, or delete it,
+each of which moves or destroys manager access just as effectively as flipping
+the flag.
+
+| Defect | Fix |
+|---|---|
+| A regular manager could edit, rename, or change the email of an elevated tutor profile | Every write targeting an elevated profile now requires a super admin |
+| A regular manager could unapprove, unlink, relink, or delete an elevated profile | Same guard applied to approval, linking, unlinking, and deletion |
+| Revoking elevated flags was unguarded (only granting was checked) | `assertMayChangeElevatedFlags` fires on any change in either direction |
+| The system could be left with zero reachable super admins | `assertKeepsASuperAdmin` refuses the last one dropping their flag, unapproving, unlinking, or being deleted; counting linked super admins plus `admin` role accounts |
+| Privilege logic was scattered across the controller | Extracted to `server/lib/privileges.js` with named helpers |
+
+### Role-safe profile linking
+
+| Defect | Fix |
+|---|---|
+| A student account could be linked to a tutor profile and vice versa | The account's role must match the profile type; managers and admins may still hold a tutor profile because the manager dashboard is reached through one |
+| One account could own both a student and a tutor profile, making its identity ambiguous | Rejected with 409, and enforced by unique indexes on `students.user_id` and `tutors.user_id` |
+| An already-linked profile could be silently relinked | Rejected with 409; unlink first |
+
+### Module student identity
+
+Module access is checked against both `student_id` and `student_email`, so a
+request supplying one student's id with another's email produced a module
+visible to two unrelated students, and a file readable by both.
+
+| Defect | Fix |
+|---|---|
+| Mismatched id and email created a dual-identity module | Rejected with 400; the module is not created |
+| An unknown student id was silently ignored, falling back to the email | Rejected with 400 |
+| Client-supplied name and email were stored verbatim | The stored id, email, and name always come from the database row |
+| Assignment by email before the family registers | Preserved deliberately: the module holds the email until a profile exists, documented in `LOCAL_DEVELOPMENT.md` |
+
+### Scheduling correctness
+
+| Defect | Fix |
+|---|---|
+| One student could book two different tutors at overlapping times | Range-overlap check inside the booking transaction, plus the `ux_bookings_student_live_slot` partial unique index; returns 409 "You already have another appointment during that time." |
+| A booking could name a course its tutor does not teach | The course must exist and have a `tutor_courses` row for that tutor; a tutor with no assigned courses can still be booked with `course_id` null |
+| Managers could revive a booking after only a tutor-slot check, producing appointments in the past, beyond 30 days, outside availability, with an unapproved tutor, or clashing with the student | Revival runs the full validator inside the transaction |
+| A completed session could be silently reopened | Not reachable normally; `POST /api/bookings/:id/override-status` requires super admin plus a written reason and records an `admin_overrides` row |
+| `Date.parse` normalized impossible dates, so 2026-02-31 became March 3 | Strict calendar validation with leap-year handling |
+
+### Session and HTTP security
+
+| Defect | Fix |
+|---|---|
+| Production could start with the development session secret | Startup fails when `NODE_ENV=production` and the secret is missing or a known placeholder |
+| Logout accepted the unsigned cookie and cleared without matching attributes | Signed cookie only; cleared with the same attributes it was set with |
+| Cookie attributes were hardcoded | Centralized in `server/lib/config.js` behind `COOKIE_SAME_SITE`, `COOKIE_SECURE`, `COOKIE_DOMAIN` |
+| No security headers | Helmet, with CSP deliberately off because this process serves JSON only and the app is served by Vite |
+| No abuse limits on login, registration, or the public inquiry form | In-memory per-IP limiters, environment-configurable and stricter in production |
+| Cookie auth with no cross-site write protection | Origin verified on POST, PUT, PATCH, DELETE when an Origin header is present; header-less callers such as the test suite are unaffected |
+
+### Privacy and file hygiene
+
+| Defect | Fix |
+|---|---|
+| Every authenticated account could read every approved tutor's email | Removed from the student-facing directory, which now exposes name and bio; the booking UI already rendered contact details conditionally, so it degrades cleanly |
+| A failed database insert left an unreachable blob on disk | The blob is removed when recording fails |
+| Abandoned uploads accumulated forever | `POST /api/maintenance/orphan-files` (super admin) removes records and blobs no module references, never touching an attached file |
+
+### Placeholder data replaced
+
+| Defect | Fix |
+|---|---|
+| The student dashboard displayed invented metrics and a hardcoded "SAT Math, 75% complete" focus | Real `student_progress_metrics` and `student_focus` records, scoped per student, with professional empty states when nothing is recorded |
+| No way to maintain that data | Tutors update focus and metrics from My Students; managers may do so for any student; students are read-only |
+| Contact inquiries were stored but invisible to staff | Manager dashboard Inquiries tab with the full submission, a new/contacted/closed workflow, and internal notes |
+
+### Migrations added
+
+`003_security_and_integrity.sql`, `004_student_progress.sql`, and
+`005_inquiry_workflow.sql`. Migrations 001 and 002 were not modified.
+
 ## Verification summary
 
 | Check | Result |
@@ -151,6 +238,7 @@ and the confirmed defects were fixed. Grouped by what they affected:
 | `npm run build` | Succeeds; `dist/` contains no Base44 reference |
 | `npm run lint` | Clean (baseline had 18 errors) |
 | `npm run typecheck` | Clean (baseline had 15 errors) |
-| `npm run test:api` | 100 passed, 0 failed |
-| `npm run test:ui` | 45 passed, 0 failed, 0 console errors |
+| `npm run test:api` | 184 passed, 0 failed |
+| `npm run test:ui` | 55 passed, 0 failed, 0 console errors |
+| `npm test` / `npm run test:all` | Passes end to end on a temporary stack |
 | Network requests to any Base44 host during a full browser session | zero |

@@ -36,9 +36,30 @@ cp .env.example .env
 | `SESSION_SECRET` | development-only fallback | Signs session cookies. Set a strong random value anywhere other than your own machine. |
 | `DATABASE_PATH` | `server/db/data/openminds.db` | SQLite file location |
 | `UPLOADS_DIR` | `server/uploads` | Where uploaded files are stored |
-| `CORS_ORIGIN` | `http://localhost:5173` | Allowed browser origin |
-| `NODE_ENV` | unset | When set to `production`, session cookies get the `Secure` flag (HTTPS only). Leave unset for local HTTP. |
+| `CORS_ORIGIN` | `http://localhost:5173` | Comma-separated browser origins allowed to send credentialed requests. Also the allowlist for the Origin check on state-changing calls. |
+| `NODE_ENV` | unset | With `production`, the server refuses to start on a placeholder `SESSION_SECRET`, cookies become `Secure`, and rate limits tighten. |
+| `COOKIE_SAME_SITE` | `lax` | Session cookie SameSite attribute. |
+| `COOKIE_SECURE` | follows `NODE_ENV` | Force the `Secure` flag on or off. |
+| `COOKIE_DOMAIN` | unset | Optional cookie domain for a shared parent domain. |
+| `RATE_LIMIT_LOGIN_MAX` / `_WINDOW_MS` | 50 per 15 min locally | Login attempt limit. |
+| `RATE_LIMIT_REGISTER_MAX` / `_WINDOW_MS` | 50 per hour locally | Registration limit. |
+| `RATE_LIMIT_INQUIRY_MAX` / `_WINDOW_MS` | 100 per hour locally | Public contact form limit. |
 | `VITE_API_BASE_URL` | `/api` | Frontend API base. Leave unset locally; set a full URL when the backend is hosted separately. |
+
+### Cross-domain hosting note
+
+Local development is same-origin through the Vite proxy, so the defaults need
+no changes. A frontend on GitHub Pages calling a backend on an unrelated
+domain is a cross-site request, which requires all of:
+
+- `COOKIE_SAME_SITE=none` and `COOKIE_SECURE=true` (browsers reject
+  `SameSite=None` without `Secure`)
+- `CORS_ORIGIN` set to the exact frontend origin, not a wildcard
+- HTTPS on both sides, since `Secure` cookies are not sent over HTTP
+
+The same `CORS_ORIGIN` list drives the Origin check applied to every POST,
+PATCH, PUT, and DELETE, so a forged cross-site write is refused even though
+the browser attaches the session cookie automatically.
 
 `.env` is git-ignored. No secret belongs in a `VITE_`-prefixed variable, because
 Vite inlines those into the browser bundle.
@@ -58,7 +79,18 @@ inserting demo data. Migrations are plain SQL files in
 
 Tables: `users`, `sessions`, `students`, `tutors`, `courses`, `tutor_courses`,
 `availability_slots`, `bookings`, `files`, `modules`, `inquiries`,
-`notification_outbox`.
+`notification_outbox`, `student_progress_metrics`, `student_focus`,
+`admin_overrides`.
+
+Migrations are additive and ordered; earlier ones are never edited:
+
+| File | Adds |
+|---|---|
+| `001_init.sql` | The original schema |
+| `002_preserve_history.sql` | Restricted tutor deletes, unique course codes |
+| `003_security_and_integrity.sql` | Student double-booking index, one profile per account, `admin_overrides` |
+| `004_student_progress.sql` | `student_progress_metrics`, `student_focus` |
+| `005_inquiry_workflow.sql` | Inquiry `status`, `manager_notes`, `updated_at` |
 
 Deleting a tutor is restricted at the database level when appointments or
 modules reference them, so student history cannot be destroyed by a single
@@ -116,9 +148,17 @@ re-seeds. Uploaded files are not removed by this command; clear them with
 ## 8. Testing roles
 
 ```bash
-npm run test:api   # 100 backend checks, temporary database, no dev stack needed
-npm run test:ui    # 45 browser checks, requires `npm run dev` running
+npm test           # everything: lint, typecheck, build, API, browser
+npm run test:all   # same as npm test
+npm run test:api   # 184 backend checks, temporary database, no dev stack needed
+npm run test:ui    # 55 browser checks, requires `npm run dev` running
 ```
+
+`npm test` is self-contained: it runs lint, typecheck, and build, then the API
+suite, then starts a temporary API and Vite server on their own ports with a
+throwaway database and uploads directory, runs the browser suite against them,
+and shuts everything down. Your development database is never touched, and you
+do not need `npm run dev` open in another terminal.
 
 `npm run test:api` runs against a throwaway database in your system temp
 directory and leaves your development data untouched. It covers login, role
@@ -160,7 +200,55 @@ immediately, without waiting for the session to expire.
 The scheduling grid shows other students' booked slots as taken, but the API
 returns only the tutor, date, and time for bookings that are not yours. Names,
 emails, phone numbers, and assignment text never leave the server for someone
-else's booking.
+else's booking. The student-facing tutor directory lists names and bios only:
+staff email addresses are visible to managers, not to every account.
+
+### Role and linking rules
+
+A portal account and a profile are separate records, joined by an explicit
+link. The rules the API enforces:
+
+- A student profile links only to an account whose role is `student_parent`.
+- A tutor profile links to a `tutor`, `manager`, or `admin` account. Managers
+  hold a tutor profile by design: the manager dashboard is reached through one.
+- No account may own both a student profile and a tutor profile.
+- An already-linked profile is never silently relinked. Unlink first.
+- Registration adopts a pre-created profile only when it carries no standing.
+  Anything approved or elevated is linked deliberately by a manager.
+
+### Elevated profiles and the last super admin
+
+A tutor profile is "elevated" when it has `can_access_manager_dashboard` or
+`is_super_admin`. Only a super admin (or an `admin` role account) may edit,
+rename, change the email of, approve, unapprove, link, unlink, or delete one.
+A regular manager receives 403 for every one of those actions, so no manager
+can quietly transfer or revoke another manager's access.
+
+The system also refuses any change that would leave zero reachable super
+admins: the last one cannot drop their own flag, unapprove themselves, unlink
+their account, or be deleted. Grant super admin to a second linked account
+first, and the same action is allowed.
+
+### Progress management
+
+Progress is real data, not dashboard decoration:
+
+- A tutor opens **My Students**, hovers a student, and clicks **Update
+  Progress** to set this week's focus and add labelled metrics.
+- A manager can do the same for any student through the API.
+- The student sees their own progress read-only on their dashboard. With no
+  records, the dashboard says so instead of showing invented percentages.
+- A tutor may only maintain progress for students they actually work with, that
+  is someone with a booking or a module from them.
+
+### Inquiry management
+
+The manager dashboard has an **Inquiries** tab listing every contact-form
+submission with its submitted date, parent name, email, student grade, subject
+or exam, interested program, goals, and message. Each inquiry moves through
+`new` to `contacted` to `closed`, with an internal notes field. Inquiries are
+never deleted through the API: they are the record of a lead. The Google
+Sheets seam in `server/services/inquiryIntegrationService.js` is untouched.
 
 ## 9. Local uploads
 
@@ -216,6 +304,18 @@ seam where a real provider gets implemented later.
   a confirmed booking from the Bookings tab.
 - **A grade cannot be corrected once submitted.** Grading moves a module to
   `graded`, which is terminal, and the review queue only lists submitted work.
+- **Rate limits are per process and in memory.** They reset when the server
+  restarts and are not shared across processes; a clustered deployment needs a
+  shared store.
+- **Reopening a completed session needs an override.** Managers cannot revive
+  one normally. A super admin can `POST /api/bookings/:id/override-status`
+  with a written reason, which is recorded in `admin_overrides`. There is no
+  UI for this yet; it is deliberately an API-level action.
+- **Orphan upload cleanup is manual.** `POST /api/maintenance/orphan-files`
+  (super admin) removes upload records and blobs that no module references.
+  Nothing runs it on a schedule.
+- **Progress metrics are free-text label and value pairs.** There are no charts
+  or trend analytics, by design for this pass.
 - **Tutors with history cannot be deleted.** Deleting would take student
   appointment and module records with it, so the API refuses and asks the
   manager to turn off approval instead.
@@ -243,7 +343,10 @@ Checklist before going live:
    still wanted.
 5. Move uploads to object storage by reimplementing `server/services/fileService.js`.
 6. Delete the demo accounts. They exist only in the seed script.
-7. Add rate limiting to `/api/inquiries` and `/api/auth/login`.
+7. Review the rate limits, which already exist but are per process and in
+   memory; move them to a shared store if you run more than one instance.
+8. Set `COOKIE_SAME_SITE=none` and `COOKIE_SECURE=true` if the frontend and
+   API end up on unrelated domains, and serve both over HTTPS.
 
 ### Routing note for GitHub Pages
 
