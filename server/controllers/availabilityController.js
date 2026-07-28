@@ -3,10 +3,13 @@ import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
 import { isManager } from '../middleware/auth.js';
+import { firstQueryValue } from '../lib/query.js';
 import { badRequest, notFound, forbidden } from '../middleware/errors.js';
 
 const slotSchema = z.object({
-  tutor_id: z.string().min(1).optional(),
+  // Treat an empty select as "not provided" rather than rejecting the request
+  // with a validation error the manager form cannot explain.
+  tutor_id: z.string().trim().optional().transform((v) => (v ? v : undefined)),
   day_of_week: z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
   start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:MM'),
   end_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:MM'),
@@ -16,7 +19,7 @@ const slotSchema = z.object({
 // Managers see every slot; tutors additionally see their own inactive slots;
 // everyone else (students booking sessions) sees only active slots.
 export function listSlots(req, res) {
-  const { tutor_id } = req.query;
+  const tutor_id = firstQueryValue(req.query.tutor_id);
   let rows;
   if (isManager(req)) {
     rows = tutor_id
@@ -30,6 +33,21 @@ export function listSlots(req, res) {
       : db.prepare('SELECT * FROM availability_slots WHERE is_active = 1').all();
   }
   res.json(serializeRows(rows));
+}
+
+// Two active windows on the same weekday must not overlap: a booking start is
+// validated against each window independently, so overlapping windows would
+// let two sessions collide inside the tutor's day.
+function assertNoOverlap({ tutorId, dayOfWeek, startTime, endTime, excludeId = null }) {
+  const clash = db
+    .prepare(`SELECT id, start_time, end_time FROM availability_slots
+      WHERE tutor_id = ? AND day_of_week = ? AND is_active = 1
+      AND start_time < ? AND end_time > ?
+      AND id IS NOT ?`)
+    .get(tutorId, dayOfWeek, endTime, startTime, excludeId);
+  if (clash) {
+    throw badRequest(`That window overlaps an existing ${dayOfWeek} window (${clash.start_time} to ${clash.end_time}).`);
+  }
 }
 
 function assertCanManageSlot(req, tutorId) {
@@ -48,6 +66,11 @@ export function createSlot(req, res) {
   assertCanManageSlot(req, tutorId);
   if (!db.prepare('SELECT id FROM tutors WHERE id = ?').get(tutorId)) throw notFound('Tutor not found');
   if (data.start_time >= data.end_time) throw badRequest('End time must be after start time.');
+  if (data.is_active !== false) {
+    assertNoOverlap({
+      tutorId, dayOfWeek: data.day_of_week, startTime: data.start_time, endTime: data.end_time,
+    });
+  }
 
   const id = newId();
   db.prepare(`INSERT INTO availability_slots (id, tutor_id, day_of_week, start_time, end_time, is_active)
@@ -71,6 +94,15 @@ export function updateSlot(req, res) {
     is_active: (data.is_active ?? Boolean(existing.is_active)) ? 1 : 0,
   };
   if (merged.start_time >= merged.end_time) throw badRequest('End time must be after start time.');
+  if (merged.is_active) {
+    assertNoOverlap({
+      tutorId: merged.tutor_id,
+      dayOfWeek: merged.day_of_week,
+      startTime: merged.start_time,
+      endTime: merged.end_time,
+      excludeId: merged.id,
+    });
+  }
 
   db.prepare(`UPDATE availability_slots SET tutor_id=@tutor_id, day_of_week=@day_of_week,
       start_time=@start_time, end_time=@end_time, is_active=@is_active,

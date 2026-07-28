@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { tutorsApi } from '@/api/tutorsApi';
 import { Plus, Pencil, Trash2, Search, Check, X, Loader2 } from 'lucide-react';
 
-const empty = { full_name: '', email: '', phone: '', bio: '', auth_provider: 'google', approved: false, can_access_manager_dashboard: false, is_super_admin: false };
+const empty = { full_name: '', email: '', phone: '', bio: '', approved: false, can_access_manager_dashboard: false, is_super_admin: false };
 
 export default function TutorManager({ isSuperAdmin }) {
   const [tutors, setTutors] = useState([]);
@@ -14,7 +14,12 @@ export default function TutorManager({ isSuperAdmin }) {
   const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState('');
 
-  const load = async () => { setLoading(true); setTutors(await tutorsApi.list()); setLoading(false); };
+  const load = async () => {
+    setLoading(true);
+    try { setTutors(await tutorsApi.list()); }
+    catch (err) { flash(err?.message || 'Tutors could not be loaded.'); }
+    finally { setLoading(false); }
+  };
   useEffect(() => { load(); }, []);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -35,18 +40,42 @@ export default function TutorManager({ isSuperAdmin }) {
       is_super_admin: form.is_super_admin,
     };
     if (!isSuperAdmin) { delete data.can_access_manager_dashboard; delete data.is_super_admin; }
-    if (editing === 'new') { await tutorsApi.create(data); flash('Tutor created.'); }
-    else { await tutorsApi.update(editing.id, data); flash('Tutor updated.'); }
-    setSaving(false);
-    setEditing(null);
-    load();
+    try {
+      if (editing === 'new') { await tutorsApi.create(data); flash('Tutor created.'); }
+      else { await tutorsApi.update(editing.id, data); flash('Tutor updated.'); }
+      setEditing(null);
+      load();
+    } catch (err) {
+      flash(err?.message || 'That tutor could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Registration never adopts an approved or elevated profile on its own, so
+  // a manager connects the profile to the person's portal account here.
+  const toggleLink = async (t) => {
+    try {
+      const updated = await tutorsApi.link(t.id, !t.user_id);
+      setEditing(updated);
+      flash(updated.user_id ? 'Portal account linked.' : 'Portal account unlinked.');
+      load();
+    } catch (err) {
+      flash(err?.message || 'The portal account could not be linked.');
+    }
   };
 
   const confirmDelete = async () => {
-    await tutorsApi.remove(deleteId);
-    setDeleteId(null);
-    flash('Tutor deleted.');
-    load();
+    try {
+      await tutorsApi.remove(deleteId);
+      flash('Tutor deleted.');
+      load();
+    } catch (err) {
+      // Tutors with appointment or module history cannot be deleted.
+      flash(err?.message || 'That tutor could not be deleted.');
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   const filtered = tutors.filter(t =>
@@ -78,10 +107,25 @@ export default function TutorManager({ isSuperAdmin }) {
             <input placeholder="Full Name*" value={form.full_name} onChange={e => f('full_name', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <input placeholder="Email*" value={form.email} onChange={e => f('email', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <input placeholder="Phone" value={form.phone || ''} onChange={e => f('phone', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-            <select value={form.auth_provider} onChange={e => f('auth_provider', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
-              <option value="google">Google</option>
-              <option value="email">Email</option>
-            </select>
+            {editing !== 'new' ? (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                <span className="text-slate-500">Portal account:</span>
+                <span className={editing.user_id ? 'font-medium text-emerald-600' : 'text-slate-400'}>
+                  {editing.user_id ? 'Linked' : 'Not linked'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleLink(editing)}
+                  className="ml-auto rounded-lg border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  {editing.user_id ? 'Unlink' : 'Link'}
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-sm text-slate-400">
+                Portal access is linked after the tutor registers with this email.
+              </div>
+            )}
             <textarea placeholder="Bio" value={form.bio || ''} onChange={e => f('bio', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm sm:col-span-2 min-h-[80px]" />
           </div>
           <div className="flex flex-wrap gap-4 text-sm">

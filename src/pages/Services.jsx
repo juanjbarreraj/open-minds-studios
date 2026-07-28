@@ -74,7 +74,7 @@ const coachingHow = [
   { label: 'Personalized support', desc: 'Coaching adapts as the student grows and their needs evolve.' },
 ];
 
-function ServiceSection({ id, icon: Icon, color, bg, borderColor, title, badge, intro, points, howItems, children }) {
+function ServiceSection({ id, icon: Icon, color, bg, borderColor, title, badge, intro, points, howItems, children = null }) {
   return (
     <section id={id} className="py-16 px-6 border-t border-slate-100 scroll-mt-20" style={{ backgroundColor: bg }}>
       <div className="mx-auto max-w-5xl">

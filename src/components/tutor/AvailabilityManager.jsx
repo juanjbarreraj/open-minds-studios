@@ -23,33 +23,52 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
     const err = validate(form);
     if (err) { setError(err); return; }
     setSaving(true);
-    await availabilityApi.create({ ...form, tutor_id: tutorId });
-    setSaving(false);
-    setAdding(false);
-    setForm({ ...emptySlot });
-    setError('');
-    onRefresh();
+    try {
+      await availabilityApi.create({ ...form, tutor_id: tutorId });
+      setAdding(false);
+      setForm({ ...emptySlot });
+      setError('');
+      onRefresh();
+    } catch (e) {
+      // For example a window overlapping one already set for that day.
+      setError(e?.message || 'That availability window could not be saved.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEdit = async (id) => {
     const err = validate(editForm);
     if (err) { setError(err); return; }
     setSaving(true);
-    await availabilityApi.update(id, editForm);
-    setSaving(false);
-    setEditingId(null);
-    setError('');
-    onRefresh();
+    try {
+      await availabilityApi.update(id, editForm);
+      setEditingId(null);
+      setError('');
+      onRefresh();
+    } catch (e) {
+      setError(e?.message || 'That availability window could not be saved.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id) => {
-    await availabilityApi.remove(id);
-    onRefresh();
+    try {
+      await availabilityApi.remove(id);
+      onRefresh();
+    } catch (e) {
+      setError(e?.message || 'That availability window could not be deleted.');
+    }
   };
 
   const handleToggle = async (slot) => {
-    await availabilityApi.update(slot.id, { is_active: !slot.is_active });
-    onRefresh();
+    try {
+      await availabilityApi.update(slot.id, { is_active: !slot.is_active });
+      onRefresh();
+    } catch (e) {
+      setError(e?.message || 'That change could not be saved.');
+    }
   };
 
   const slotsByDay = DAYS.reduce((acc, day) => {

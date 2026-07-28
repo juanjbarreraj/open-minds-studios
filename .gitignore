@@ -34,3 +34,4 @@ dist-ssr
 server/db/data/
 server/uploads/*
 !server/uploads/.gitkeep
+!.env.example

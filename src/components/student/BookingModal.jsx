@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { bookingsApi } from '@/api/bookingsApi';
 import { coursesApi, tutorCoursesApi } from '@/api/coursesApi';
+import { toYmd } from '@/lib/appTime';
 import { X, Loader2, CheckCircle, Clock } from 'lucide-react';
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -43,13 +44,20 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
 
   useEffect(() => {
     (async () => {
-      const [tc, ac] = await Promise.all([
-        tutorCoursesApi.list(tutor.id),
-        coursesApi.list(),
-      ]);
-      setTutorCourses(tc);
-      setAllCourses(ac);
-      if (tc.length > 0) setCourseId(tc[0].course_id);
+      try {
+        const [tc, ac] = await Promise.all([
+          tutorCoursesApi.list(tutor.id),
+          coursesApi.list(),
+        ]);
+        setTutorCourses(tc);
+        setAllCourses(ac);
+        if (tc.length > 0) setCourseId(tc[0].course_id);
+      } catch {
+        // The course picker falls back to "No courses assigned"; the booking
+        // itself does not depend on it.
+        setTutorCourses([]);
+        setAllCourses([]);
+      }
     })();
   }, [tutor.id]);
 
@@ -70,8 +78,8 @@ export default function BookingModal({ cell, student, onClose, onBooked }) {
     setError('');
     setSaving(true);
 
-    // session_date is the real calendar date of the clicked cell, in local time
-    const sessionDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    // The calendar date of the clicked cell (grid cells carry Eastern Time dates).
+    const sessionDate = toYmd(date);
     try {
       await bookingsApi.create({
         tutor_id: tutor.id,

@@ -3,7 +3,7 @@ import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
 import { isManager } from '../middleware/auth.js';
-import { notFound, conflict, forbidden } from '../middleware/errors.js';
+import { badRequest, notFound, conflict, forbidden } from '../middleware/errors.js';
 
 const tutorSchema = z.object({
   full_name: z.string().trim().min(1).max(160),
@@ -21,14 +21,29 @@ const PUBLIC_FIELDS = ['id', 'full_name', 'email', 'bio', 'approved', 'created_a
 export function listTutors(req, res) {
   const rows = serializeRows(db.prepare('SELECT * FROM tutors ORDER BY created_at DESC').all());
   if (isManager(req)) return res.json(rows);
+
+  // Everyone else sees a directory of approved tutors, but only once they
+  // have standing in the portal. Without this, a throwaway registration could
+  // enumerate every tutor's contact details.
+  const hasStanding =
+    (req.student?.approved && req.student?.can_access_student_portal) || req.tutor?.approved;
+  if (!hasStanding) throw forbidden('Your account does not have portal access yet.');
+
   const approvedOnly = rows.filter((t) => t.approved);
   return res.json(approvedOnly.map((t) => Object.fromEntries(PUBLIC_FIELDS.map((f) => [f, t[f]]))));
 }
 
-// Only a super admin may grant elevated flags (mirrors the old UI rule).
-function guardElevatedFlags(req, data) {
-  if ((data.can_access_manager_dashboard || data.is_super_admin) && !req.tutor?.is_super_admin && req.user.role !== 'admin') {
-    throw forbidden('Only a super admin can grant manager or super admin access.');
+// Elevated flags may only be changed by a super admin, in either direction:
+// granting them is escalation, and revoking them would let one manager lock
+// out the super admin.
+function guardElevatedFlags(req, data, existing = null) {
+  const touchesElevated =
+    (data.can_access_manager_dashboard !== undefined &&
+      data.can_access_manager_dashboard !== Boolean(existing?.can_access_manager_dashboard)) ||
+    (data.is_super_admin !== undefined && data.is_super_admin !== Boolean(existing?.is_super_admin));
+  if (!touchesElevated) return;
+  if (!req.tutor?.is_super_admin && req.user.role !== 'admin') {
+    throw forbidden('Only a super admin can change manager or super admin access.');
   }
 }
 
@@ -55,7 +70,10 @@ export function updateTutor(req, res) {
   const existing = db.prepare('SELECT * FROM tutors WHERE id = ?').get(req.params.id);
   if (!existing) throw notFound('Tutor not found');
   const data = tutorSchema.partial().parse(req.body);
-  guardElevatedFlags(req, data);
+  guardElevatedFlags(req, data, existing);
+  if (data.email && existing.user_id && data.email.toLowerCase() !== existing.email.toLowerCase()) {
+    throw badRequest('Unlink the portal account before changing this email address.');
+  }
 
   const merged = {
     id: existing.id,
@@ -75,12 +93,47 @@ export function updateTutor(req, res) {
 }
 
 export function deleteTutor(req, res) {
-  const info = db.prepare('DELETE FROM tutors WHERE id = ?').run(req.params.id);
-  if (info.changes === 0) throw notFound('Tutor not found');
+  const existing = db.prepare('SELECT id FROM tutors WHERE id = ?').get(req.params.id);
+  if (!existing) throw notFound('Tutor not found');
+
+  // Appointment and module history belongs to the students too, so a tutor
+  // with records is never deletable. Unapprove them instead.
+  const bookings = db.prepare('SELECT COUNT(*) AS n FROM bookings WHERE tutor_id = ?').get(existing.id).n;
+  const modules = db.prepare('SELECT COUNT(*) AS n FROM modules WHERE tutor_id = ?').get(existing.id).n;
+  if (bookings > 0 || modules > 0) {
+    throw badRequest(
+      `This tutor has ${bookings} appointment(s) and ${modules} module(s) on record. Turn off their approval to remove portal access without deleting student history.`
+    );
+  }
+
+  db.prepare('DELETE FROM tutors WHERE id = ?').run(existing.id);
   res.json({ ok: true });
 }
 
 export function myTutorProfile(req, res) {
   if (!req.tutor) throw notFound('No tutor profile for this account');
   res.json(serializeRow(req.tutor));
+}
+
+// Manager links a tutor profile to the portal account registered with the
+// same email (see the student equivalent for why this is explicit).
+export function linkTutorAccount(req, res) {
+  const existing = db.prepare('SELECT * FROM tutors WHERE id = ?').get(req.params.id);
+  if (!existing) throw notFound('Tutor not found');
+
+  const { link } = z.object({ link: z.boolean().default(true) }).parse(req.body ?? {});
+  if (!link) {
+    db.prepare("UPDATE tutors SET user_id = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(existing.id);
+    return res.json(serializeRow(db.prepare('SELECT * FROM tutors WHERE id = ?').get(existing.id)));
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(existing.email);
+  if (!user) throw badRequest('No portal account has registered with that email address yet.');
+  const taken = db.prepare('SELECT id FROM tutors WHERE user_id = ? AND id != ?').get(user.id, existing.id);
+  if (taken) throw conflict('That portal account is already linked to another tutor profile.');
+
+  db.prepare("UPDATE tutors SET user_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+    .run(user.id, existing.id);
+  return res.json(serializeRow(db.prepare('SELECT * FROM tutors WHERE id = ?').get(existing.id)));
 }

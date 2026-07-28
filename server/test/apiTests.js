@@ -76,8 +76,8 @@ console.log('\n== Auth ==');
   const r = await anon.get('/health');
   check('health endpoint', r.status === 200 && r.data.ok === true);
 
-  const me401 = await anon.get('/auth/me');
-  check('me without session is 401', me401.status === 401);
+  const meAnon = await anon.get('/auth/me');
+  check('me without session reports nobody signed in', meAnon.status === 200 && meAnon.data.user === null);
 
   const bad = await student.post('/auth/login', { email: 'student@demo.local', password: 'wrong' });
   check('wrong password rejected 401', bad.status === 401);
@@ -329,12 +329,192 @@ console.log('\n== Inquiries and notification outbox ==');
   check('booking events recorded in outbox', bookingOutbox.length >= 3);
 }
 
+console.log('\n== Identity and privilege boundaries ==');
+{
+  // A manager pre-creates an elevated tutor profile. Registering with that
+  // email must not inherit the profile or any of its standing.
+  const elevated = await manager.post('/tutors', {
+    full_name: 'Future Director', email: 'director@demo.local',
+    approved: true, can_access_manager_dashboard: true,
+  });
+  check('manager can pre-create an elevated tutor profile', elevated.status === 201);
+
+  const attacker = client();
+  const claim = await attacker.post('/auth/register', {
+    email: 'director@demo.local', password: 'attacker-pw-1', full_name: 'Mallory', account_type: 'tutor',
+  });
+  check('registration with a pre-created email succeeds but claims nothing', claim.status === 201 && !claim.data.tutor);
+  const escalated = await attacker.get('/students');
+  check('claimed-email account gets no manager access', escalated.status === 403);
+  const asTutor = await attacker.post('/modules', { student_email: 'student@demo.local', name: 'x' });
+  check('claimed-email account gets no tutor access', asTutor.status === 403);
+
+  // Manager links the profile explicitly; only then does standing apply.
+  const link = await manager.post(`/tutors/${elevated.data.id}/link`, { link: true });
+  check('manager can link a profile to a registered account', link.status === 200);
+  const afterLink = await attacker.get('/auth/me');
+  check('linked account now carries the tutor profile', afterLink.data.tutor?.id === elevated.data.id);
+  const managerNow = await attacker.get('/students');
+  check('linked elevated profile grants manager access', managerNow.status === 200);
+
+  // A manager who is not a super admin cannot strip the super admin's flags.
+  const plainManagerUser = client();
+  await plainManagerUser.post('/auth/register', {
+    email: 'plainmgr@demo.local', password: 'plainmgr-123', full_name: 'Plain Manager', account_type: 'tutor',
+  });
+  const plainProfile = await manager.post('/tutors', {
+    full_name: 'Plain Manager', email: 'plainmgr@demo.local', approved: true, can_access_manager_dashboard: true,
+  });
+  await manager.post(`/tutors/${plainProfile.data.id}/link`, { link: true });
+  const allTutors = await manager.get('/tutors');
+  const superAdminRow = allTutors.data.find((t) => t.email === 'manager@demo.local');
+  const strip = await plainManagerUser.patch(`/tutors/${superAdminRow.id}`, {
+    is_super_admin: false, can_access_manager_dashboard: false,
+  });
+  check('non-super-admin cannot revoke super admin flags', strip.status === 403);
+  const grant = await plainManagerUser.patch(`/tutors/${plainProfile.data.id}`, { is_super_admin: true });
+  check('non-super-admin cannot grant itself super admin', grant.status === 403);
+}
+
+console.log('\n== Session integrity ==');
+{
+  const probe = client();
+  const login = await probe.post('/auth/login', { email: 'student@demo.local', password: 'student123' });
+  check('probe login works', login.status === 200);
+
+  // Replaying the inner token without the signature must be rejected.
+  const signed = login.headers.get('set-cookie').split(';')[0].split('=')[1];
+  const raw = decodeURIComponent(signed).replace(/^s:/, '').split('.')[0];
+  const replay = await (await fetch(`${BASE}/auth/me`, { headers: { Cookie: `oms_session=${raw}` } })).json();
+  check('unsigned cookie value does not authenticate', replay.user === null);
+
+  const tampered = await (await fetch(`${BASE}/auth/me`, { headers: { Cookie: `oms_session=s:${raw}.badsignature` } })).json();
+  check('tampered cookie signature does not authenticate', tampered.user === null);
+}
+
+console.log('\n== Suspension takes effect immediately ==');
+{
+  const tutors = await manager.get('/tutors');
+  const demoTutor = tutors.data.find((t) => t.email === 'tutor@demo.local');
+  const suspend = await manager.patch(`/tutors/${demoTutor.id}`, { approved: false });
+  check('manager can suspend a tutor', suspend.status === 200 && suspend.data.approved === false);
+
+  const read = await tutor.get('/bookings');
+  check('suspended tutor cannot read bookings', read.status === 403);
+  const act = await tutor.patch(`/bookings/${acceptedId}/status`, { status: 'completed' });
+  check('suspended tutor cannot change booking status', act.status === 403);
+  const uploadBlocked = await tutor.post('/files', (() => {
+    const fd = new FormData();
+    fd.append('file', new Blob(['x'], { type: 'text/plain' }), 'x.txt');
+    return fd;
+  })());
+  check('suspended tutor cannot upload files', uploadBlocked.status === 403);
+
+  const restore = await manager.patch(`/tutors/${demoTutor.id}`, { approved: true });
+  check('manager can restore the tutor', restore.status === 200 && restore.data.approved === true);
+}
+
+console.log('\n== History preservation ==');
+{
+  const tutors = await manager.get('/tutors');
+  const demoTutor = tutors.data.find((t) => t.email === 'tutor@demo.local');
+  const del = await manager.del(`/tutors/${demoTutor.id}`);
+  check('deleting a tutor with history is refused, not cascaded', del.status === 400);
+  const stillThere = await manager.get('/bookings');
+  check('bookings survive the refused delete', stillThere.data.length > 0);
+}
+
+console.log('\n== File attachment ownership ==');
+{
+  const tutorFd = new FormData();
+  tutorFd.append('file', new Blob(['tutor worksheet'], { type: 'text/plain' }), 'worksheet.txt');
+  const tutorFile = await tutor.post('/files', tutorFd);
+  check('tutor can upload a worksheet', tutorFile.status === 201);
+
+  const steal = await second.post(`/modules`, { student_email: 'student@demo.local', name: 'steal' });
+  check('student cannot create modules at all', steal.status === 403);
+
+  const studentFd = new FormData();
+  studentFd.append('file', new Blob(['private notes'], { type: 'text/plain' }), 'private.txt');
+  const studentFile = await second.post('/files', studentFd);
+  const reshare = await tutor.post('/modules', {
+    student_email: 'student@demo.local', name: 'reshared', file_id: studentFile.data.id,
+  });
+  check('tutor cannot attach a file uploaded by someone else', reshare.status === 403);
+
+  // The same worksheet assigned to two students stays readable by both.
+  const m1 = await tutor.post('/modules', {
+    student_email: 'student@demo.local', name: 'shared worksheet A', file_id: tutorFile.data.id,
+  });
+  const m2 = await tutor.post('/modules', {
+    student_email: 'second@demo.local', name: 'shared worksheet B', file_id: tutorFile.data.id,
+  });
+  check('one file can back two module assignments', m1.status === 201 && m2.status === 201);
+  const d1 = await student.get(`/files/${tutorFile.data.id}`);
+  const d2 = await second.get(`/files/${tutorFile.data.id}`);
+  check('both assigned students can download the shared file', d1.status === 200 && d2.status === 200);
+}
+
+console.log('\n== Scheduling edge cases ==');
+{
+  const overlap = await manager.post('/availability', {
+    tutor_id: (await manager.get('/tutors')).data.find((t) => t.email === 'tutor@demo.local').id,
+    day_of_week: 'Monday', start_time: '10:00', end_time: '12:00',
+  });
+  check('overlapping availability window is rejected', overlap.status === 400);
+
+  const nonOverlap = await manager.post('/availability', {
+    tutor_id: (await manager.get('/tutors')).data.find((t) => t.email === 'tutor@demo.local').id,
+    day_of_week: 'Thursday', start_time: '09:00', end_time: '12:00',
+  });
+  check('non-overlapping window is accepted', nonOverlap.status === 201);
+
+  // A start time earlier today must be refused even though the date is valid.
+  const nowEt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date());
+  const todayName = new Date(`${today}T12:00:00Z`).toUTCString().slice(0, 3);
+  const dayNames = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+  const tutorsNow = await manager.get('/tutors');
+  const demoTutorId = tutorsNow.data.find((t) => t.email === 'tutor@demo.local').id;
+  await manager.post('/availability', {
+    tutor_id: demoTutorId, day_of_week: dayNames[todayName], start_time: '00:00', end_time: '23:00',
+  }).catch(() => null);
+  if (nowEt > '01:00') {
+    const pastToday = await student.post('/bookings', {
+      tutor_id: demoTutorId, session_date: today, preferred_start_time: '00:00',
+    });
+    check('a start time earlier today is rejected', pastToday.status === 400);
+  } else {
+    check('a start time earlier today is rejected (skipped near midnight ET)', true);
+  }
+}
+
+console.log('\n== Request robustness ==');
+{
+  const malformed = await fetch(`${BASE}/inquiries`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json',
+  });
+  check('malformed JSON body returns 400, not 500', malformed.status === 400);
+
+  const repeated = await manager.get('/availability?tutor_id=a&tutor_id=b');
+  check('repeated query parameters do not crash the API', repeated.status === 200);
+
+  const badFk = await student.post('/bookings', {
+    tutor_id: 'does-not-exist', session_date: monday, preferred_start_time: '09:00',
+  });
+  check('booking against a missing tutor returns 404, not 500', badFk.status === 404);
+
+  const missingFile = await student.get('/files/00000000-0000-4000-8000-000000000000');
+  check('unknown file id returns 404', missingFile.status === 404);
+}
+
 console.log('\n== Logout ==');
 {
   const out = await student.post('/auth/logout');
   check('logout succeeds', out.status === 200);
   const after = await student.get('/auth/me');
-  check('session invalidated after logout', after.status === 401);
+  check('session invalidated after logout', after.status === 200 && after.data.user === null);
 }
 
 server.close();

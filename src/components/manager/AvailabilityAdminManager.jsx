@@ -20,8 +20,14 @@ export default function AvailabilityAdminManager() {
 
   const load = async () => {
     setLoading(true);
-    const [s, t] = await Promise.all([availabilityApi.list(), tutorsApi.list()]);
-    setSlots(s); setTutors(t); setLoading(false);
+    try {
+      const [s, t] = await Promise.all([availabilityApi.list(), tutorsApi.list()]);
+      setSlots(s); setTutors(t);
+    } catch (err) {
+      flash(err?.message || 'Availability could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -29,20 +35,40 @@ export default function AvailabilityAdminManager() {
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const save = async () => {
+    if (!form.tutor_id) { flash('Choose a tutor for this availability window.'); return; }
     setSaving(true);
-    if (editing === 'new') { await availabilityApi.create(form); flash('Slot created.'); }
-    else { await availabilityApi.update(editing.id, form); flash('Slot updated.'); }
-    setSaving(false); setEditing(null); load();
+    try {
+      if (editing === 'new') { await availabilityApi.create(form); flash('Slot created.'); }
+      else { await availabilityApi.update(editing.id, form); flash('Slot updated.'); }
+      setEditing(null);
+      load();
+    } catch (err) {
+      // For example a window that overlaps one the tutor already has.
+      flash(err?.message || 'That availability window could not be saved.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
-    await availabilityApi.remove(deleteId);
-    setDeleteId(null); flash('Slot deleted.'); load();
+    try {
+      await availabilityApi.remove(deleteId);
+      flash('Slot deleted.');
+      load();
+    } catch (err) {
+      flash(err?.message || 'That availability window could not be deleted.');
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   const toggleActive = async (slot) => {
-    await availabilityApi.update(slot.id, { is_active: !slot.is_active });
-    load();
+    try {
+      await availabilityApi.update(slot.id, { is_active: !slot.is_active });
+      load();
+    } catch (err) {
+      flash(err?.message || 'That change could not be saved.');
+    }
   };
 
   const getTutorName = (id) => tutors.find(t => t.id === id)?.full_name || '-';

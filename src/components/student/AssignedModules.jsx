@@ -17,20 +17,28 @@ function ModuleCard({ mod, onRefresh }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [error, setError] = useState('');
 
   const sc = STATUS_STYLE[mod.status] || STATUS_STYLE.assigned;
   const canSubmit = mod.status === 'assigned';
 
   const handleSubmit = async () => {
     if (!file) return;
+    setError('');
     setUploading(true);
-    const { id: fileId } = await filesApi.upload(file);
-    setUploading(false);
-    setSubmitting(true);
-    await modulesApi.submit(mod.id, fileId);
-    setSubmitting(false);
-    setSubmitted(true);
-    setTimeout(() => onRefresh(), 1000);
+    try {
+      const { id: fileId } = await filesApi.upload(file);
+      setUploading(false);
+      setSubmitting(true);
+      await modulesApi.submit(mod.id, fileId);
+      setSubmitted(true);
+      setTimeout(() => onRefresh(), 1000);
+    } catch (err) {
+      setError(err?.message || 'Your file could not be submitted. Please try again.');
+    } finally {
+      setUploading(false);
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -124,6 +132,7 @@ function ModuleCard({ mod, onRefresh }) {
                   {uploading ? 'Uploading...' : submitting ? 'Submitting...' : 'Submit for Grading'}
                 </button>
               )}
+              {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
             </div>
           )}
         </div>

@@ -8,4 +8,7 @@ export const tutorsApi = {
   update: (id, data) => api.patch(`/tutors/${id}`, data),
   remove: (id) => api.delete(`/tutors/${id}`),
   me: () => api.get('/tutors/me'),
+  // Link (or unlink) this profile to the portal account registered with the
+  // same email address.
+  link: (id, link = true) => api.post(`/tutors/${id}/link`, { link }),
 };

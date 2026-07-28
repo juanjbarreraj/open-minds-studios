@@ -4,6 +4,9 @@ import { availabilityApi } from '@/api/availabilityApi';
 import { bookingsApi } from '@/api/bookingsApi';
 import { coursesApi } from '@/api/coursesApi';
 import { Loader2, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import {
+  todayInAppTz, nowTimeInAppTz, toYmd, ymdToDate, addDaysToYmd, mondayOfYmd,
+} from '@/lib/appTime';
 import BookingModal from './BookingModal';
 import AppointmentDetailModal from './AppointmentDetailModal';
 
@@ -45,14 +48,9 @@ function getBookableHourSlots(tutorSlots) {
   return [...bookable].sort();
 }
 
-// Format a Date as local YYYY-MM-DD (avoids toISOString timezone shifts)
-function toLocalYMD(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
 // Check if a 1-hour slot is already booked on the cell's calendar date
 function isSlotBooked(bookings, tutorId, cellDate, slotTime) {
-  const dateStr = toLocalYMD(cellDate);
+  const dateStr = toYmd(cellDate);
   const slotStart = timeToMins(slotTime);
   const slotEnd = slotStart + 60;
   return bookings.find(b => {
@@ -65,21 +63,8 @@ function isSlotBooked(bookings, tutorId, cellDate, slotTime) {
   });
 }
 
-function getMondayOf(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d;
-}
-
-function getWeekDays(monday) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
+function getWeekDays(mondayYmd) {
+  return Array.from({ length: 7 }, (_, i) => ymdToDate(addDaysToYmd(mondayYmd, i)));
 }
 
 export default function SchedulingGrid({ student }) {
@@ -89,33 +74,40 @@ export default function SchedulingGrid({ student }) {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [weekStart, setWeekStart] = useState(() => getMondayOf(new Date()));
+  const [error, setError] = useState('');
+
+  // Everything below is anchored to Eastern Time, which is what the server
+  // validates against, not to whatever time zone the browser is in.
+  const todayYmd = todayInAppTz();
+  const maxYmd = addDaysToYmd(todayYmd, 30);
+
+  const [weekStart, setWeekStart] = useState(() => mondayOfYmd(todayYmd));
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const maxDate = new Date(today);
-  maxDate.setDate(maxDate.getDate() + 30);
-
-  const canGoNext = new Date(weekStart).setDate(weekStart.getDate() + 7) <= maxDate.getTime();
+  const canGoNext = addDaysToYmd(weekStart, 7) <= maxYmd;
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [tutorData, slotData, bookingData, courseData] = await Promise.all([
-      tutorsApi.list(),
-      availabilityApi.list(),
-      bookingsApi.busy(),
-      coursesApi.list(),
-    ]);
-    setTutors(tutorData.sort((a, b) => a.full_name.localeCompare(b.full_name)));
-    setSlots(slotData.filter(s => s.is_active !== false));
-    // Busy rows from the server are only pending/confirmed bookings
-    setBookings(bookingData);
-    setCourses(courseData);
-    setLoading(false);
+    try {
+      const [tutorData, slotData, bookingData, courseData] = await Promise.all([
+        tutorsApi.list(),
+        availabilityApi.list(),
+        bookingsApi.busy(),
+        coursesApi.list(),
+      ]);
+      setTutors(tutorData.sort((a, b) => a.full_name.localeCompare(b.full_name)));
+      setSlots(slotData.filter(s => s.is_active !== false));
+      // Busy rows from the server are only pending/confirmed bookings
+      setBookings(bookingData);
+      setCourses(courseData);
+      setError('');
+    } catch (err) {
+      setError(err?.message || 'We could not load the schedule. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -124,18 +116,19 @@ export default function SchedulingGrid({ student }) {
 
   const goNext = () => {
     if (!canGoNext) return;
-    setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; });
+    setWeekStart(prev => addDaysToYmd(prev, 7));
     setSelectedDay(null);
   };
 
   const goPrev = () => {
-    setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; });
+    setWeekStart(prev => addDaysToYmd(prev, -7));
     setSelectedDay(null);
   };
 
   const weekLabel = () => {
+    const start = weekDays[0];
     const end = weekDays[6];
-    return `${MONTH_ABBR[weekStart.getMonth()]} ${weekStart.getDate()} to ${MONTH_ABBR[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+    return `${MONTH_ABBR[start.getMonth()]} ${start.getDate()} to ${MONTH_ABBR[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
   };
 
   if (loading) return (
@@ -144,9 +137,26 @@ export default function SchedulingGrid({ student }) {
     </div>
   );
 
+  if (error) return (
+    <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-8 text-center">
+      <p className="text-sm text-red-600">{error}</p>
+      <button
+        onClick={loadData}
+        className="mt-3 rounded-xl px-4 py-1.5 text-xs font-semibold text-white transition-all duration-200"
+        style={{ backgroundColor: 'rgb(58,154,202)' }}
+      >
+        Try again
+      </button>
+    </div>
+  );
+
   const renderDaySlots = (date) => {
     const dayName = DAY_NAMES[date.getDay()];
-    const isPast = date < today;
+    const dayYmd = toYmd(date);
+    const isPast = dayYmd < todayYmd;
+    const isToday = dayYmd === todayYmd;
+    const isBeyondWindow = dayYmd > maxYmd;
+    const nowEt = nowTimeInAppTz();
     const daySlots = slots.filter(s => s.day_of_week === dayName);
     const dayTutors = tutors.filter(t => daySlots.some(s => s.tutor_id === t.id));
 
@@ -200,11 +210,15 @@ export default function SchedulingGrid({ student }) {
                     );
                   }
 
-                  if (isPast) {
+                  // Not bookable: a past day, an hour that already passed
+                  // today, or a day beyond the 30-day booking window.
+                  const hasPassedToday = isToday && slotTime <= nowEt;
+                  if (isPast || hasPassedToday || isBeyondWindow) {
                     return (
                       <span
                         key={slotTime}
                         className="rounded-xl px-3 py-1.5 text-xs font-medium text-slate-400 bg-slate-100 cursor-not-allowed"
+                        title={isBeyondWindow ? 'Bookings open 30 days ahead.' : 'This time has passed.'}
                       >
                         {formatSlotLabel(slotTime)} to {formatSlotLabel(endTime)}
                       </span>
@@ -291,8 +305,10 @@ export default function SchedulingGrid({ student }) {
         {weekDays.map((date) => {
           const dayName = DAY_NAMES[date.getDay()];
           const hasSlots = slots.some(s => s.day_of_week === dayName && tutors.some(t => t.id === s.tutor_id));
-          const isToday = date.toDateString() === today.toDateString();
-          const isPast = date < today;
+          const dayYmd = toYmd(date);
+          const isToday = dayYmd === todayYmd;
+          const isPast = dayYmd < todayYmd;
+          const isBeyondWindow = dayYmd > maxYmd;
           const isSelected = selectedDay?.toDateString() === date.toDateString();
 
           return (
@@ -303,7 +319,7 @@ export default function SchedulingGrid({ student }) {
               style={{
                 backgroundColor: isSelected ? 'rgba(58,154,202,0.1)' : isToday ? 'rgba(98,191,161,0.07)' : 'white',
                 borderColor: isSelected ? 'rgb(58,154,202)' : isToday ? 'rgba(98,191,161,0.5)' : 'rgb(226,232,240)',
-                opacity: isPast && !isToday ? 0.55 : 1,
+                opacity: (isPast && !isToday) || isBeyondWindow ? 0.55 : 1,
                 transform: isSelected ? 'translateY(-2px)' : 'none',
                 boxShadow: isSelected ? '0 4px 14px rgba(58,154,202,0.18)' : '0 1px 3px rgba(0,0,0,0.04)',
               }}
@@ -336,8 +352,11 @@ export default function SchedulingGrid({ student }) {
             <h3 className="text-base font-bold text-slate-800">
               {DAY_NAMES[selectedDay.getDay()]}, {MONTH_ABBR[selectedDay.getMonth()]} {selectedDay.getDate()}
             </h3>
-            {selectedDay < today && (
+            {toYmd(selectedDay) < todayYmd && (
               <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-slate-200 text-slate-500">Past date</span>
+            )}
+            {toYmd(selectedDay) > maxYmd && (
+              <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-slate-200 text-slate-500">Beyond booking window</span>
             )}
           </div>
           <p className="text-xs text-slate-400 mb-1">All sessions are 1 hour. Click a slot to select it, then confirm your booking. Times are shown in Eastern Time (ET).</p>

@@ -20,20 +20,25 @@ const statusStyles = {
 
 function AppointmentCard({ booking, course, onRefresh }) {
   const [acting, setActing] = useState(null); // 'accept' | 'decline'
+  const [error, setError] = useState('');
 
-  const handleAccept = async () => {
-    setActing('accept');
-    await bookingsApi.updateStatus(booking.id, 'confirmed');
-    setActing(null);
-    onRefresh();
+  // The card can be stale (the student may have cancelled since it loaded), so
+  // a rejected transition has to release the buttons and explain itself.
+  const act = async (kind, status) => {
+    setActing(kind);
+    setError('');
+    try {
+      await bookingsApi.updateStatus(booking.id, status);
+      onRefresh();
+    } catch (err) {
+      setError(err?.message || 'That change could not be saved. Refresh and try again.');
+    } finally {
+      setActing(null);
+    }
   };
 
-  const handleDecline = async () => {
-    setActing('decline');
-    await bookingsApi.updateStatus(booking.id, 'declined');
-    setActing(null);
-    onRefresh();
-  };
+  const handleAccept = () => act('accept', 'confirmed');
+  const handleDecline = () => act('decline', 'declined');
 
   const isPending = booking.status === 'pending';
 
@@ -115,6 +120,10 @@ function AppointmentCard({ booking, course, onRefresh }) {
             {acting === 'decline' ? 'Declining...' : 'Decline'}
           </button>
         </div>
+      )}
+
+      {error && (
+        <p className="mt-2 text-xs text-red-600">{error}</p>
       )}
     </div>
   );

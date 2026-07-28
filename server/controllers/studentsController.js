@@ -2,7 +2,7 @@ import { z } from 'zod';
 import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
-import { notFound, conflict } from '../middleware/errors.js';
+import { badRequest, notFound, conflict } from '../middleware/errors.js';
 
 const studentSchema = z.object({
   first_name: z.string().trim().max(80).optional().default(''),
@@ -36,6 +36,11 @@ export function updateStudent(req, res) {
   const existing = db.prepare('SELECT * FROM students WHERE id = ?').get(req.params.id);
   if (!existing) throw notFound('Student not found');
   const data = studentSchema.partial().parse(req.body);
+  // The email identifies a linked portal account; changing it would hand the
+  // profile to a different login.
+  if (data.email && existing.user_id && data.email.toLowerCase() !== existing.email.toLowerCase()) {
+    throw badRequest('Unlink the portal account before changing this email address.');
+  }
 
   const merged = {
     ...existing,
@@ -54,6 +59,30 @@ export function deleteStudent(req, res) {
   const info = db.prepare('DELETE FROM students WHERE id = ?').run(req.params.id);
   if (info.changes === 0) throw notFound('Student not found');
   res.json({ ok: true });
+}
+
+// Managers link a profile to a registered portal account explicitly. Self
+// registration never adopts an approved profile, so this is how a family that
+// was set up in advance gets access.
+export function linkStudentAccount(req, res) {
+  const existing = db.prepare('SELECT * FROM students WHERE id = ?').get(req.params.id);
+  if (!existing) throw notFound('Student not found');
+
+  const { link } = z.object({ link: z.boolean().default(true) }).parse(req.body ?? {});
+  if (!link) {
+    db.prepare("UPDATE students SET user_id = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(existing.id);
+    return res.json(serializeRow(db.prepare('SELECT * FROM students WHERE id = ?').get(existing.id)));
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(existing.email);
+  if (!user) throw badRequest('No portal account has registered with that email address yet.');
+  const taken = db.prepare('SELECT id FROM students WHERE user_id = ? AND id != ?').get(user.id, existing.id);
+  if (taken) throw conflict('That portal account is already linked to another student profile.');
+
+  db.prepare("UPDATE students SET user_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+    .run(user.id, existing.id);
+  return res.json(serializeRow(db.prepare('SELECT * FROM students WHERE id = ?').get(existing.id)));
 }
 
 // Returns the caller's own student profile, creating an unapproved one on

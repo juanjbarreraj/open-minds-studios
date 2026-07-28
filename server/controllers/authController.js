@@ -3,7 +3,7 @@ import { z } from 'zod';
 import db from '../db/database.js';
 import { newId, newSessionToken, hashToken } from '../lib/ids.js';
 import { serializeRow } from '../lib/serialize.js';
-import { SESSION_COOKIE, SESSION_TTL_MS } from '../middleware/auth.js';
+import { SESSION_COOKIE, SESSION_TTL_MS, loadLinkedProfiles } from '../middleware/auth.js';
 import { badRequest, unauthorized, conflict } from '../middleware/errors.js';
 
 const credentialsSchema = z.object({
@@ -20,6 +20,8 @@ const registerSchema = z.object({
 });
 
 function startSession(res, userId) {
+  // Opportunistic cleanup so expired rows do not accumulate forever.
+  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(new Date().toISOString());
   const token = newSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
   db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
@@ -44,12 +46,9 @@ function mePayload(req) {
 function loadProfiles(req, user) {
   req.user = serializeRow({ ...user });
   delete req.user.password_hash;
-  req.student = serializeRow(
-    db.prepare('SELECT * FROM students WHERE user_id = ? OR email = ? COLLATE NOCASE').get(user.id, user.email)
-  ) || null;
-  req.tutor = serializeRow(
-    db.prepare('SELECT * FROM tutors WHERE user_id = ? OR email = ? COLLATE NOCASE').get(user.id, user.email)
-  ) || null;
+  const { student, tutor } = loadLinkedProfiles(user.id);
+  req.student = student;
+  req.tutor = tutor;
 }
 
 export function register(req, res) {
@@ -67,20 +66,28 @@ export function register(req, res) {
       .run(userId, email, bcrypt.hashSync(data.password, 10), data.full_name, role);
 
     const nameParts = data.full_name.split(' ');
+    // A pre-created profile is adopted only when it carries no standing at
+    // all. Anything a manager has already approved or elevated must be linked
+    // deliberately by a manager, because self-service registration cannot
+    // prove ownership of an email address without a verification step.
     if (role === 'student_parent') {
-      const profile = db.prepare('SELECT id FROM students WHERE email = ? COLLATE NOCASE').get(email);
+      const profile = db.prepare('SELECT * FROM students WHERE email = ? COLLATE NOCASE').get(email);
       if (profile) {
-        // Profile pre-created by a manager; link it to the new account.
-        db.prepare('UPDATE students SET user_id = ? WHERE id = ?').run(userId, profile.id);
+        if (!profile.user_id && !profile.approved && !profile.can_access_student_portal) {
+          db.prepare('UPDATE students SET user_id = ? WHERE id = ?').run(userId, profile.id);
+        }
+        // Otherwise the account is created unlinked; a manager links it.
       } else {
         db.prepare(`INSERT INTO students (id, user_id, first_name, last_name, full_name, email, phone, approved, can_access_student_portal)
           VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)`)
           .run(newId(), userId, nameParts[0] || '', nameParts.slice(1).join(' ') || '', data.full_name, email, data.phone);
       }
     } else {
-      const profile = db.prepare('SELECT id FROM tutors WHERE email = ? COLLATE NOCASE').get(email);
+      const profile = db.prepare('SELECT * FROM tutors WHERE email = ? COLLATE NOCASE').get(email);
       if (profile) {
-        db.prepare('UPDATE tutors SET user_id = ? WHERE id = ?').run(userId, profile.id);
+        if (!profile.user_id && !profile.approved && !profile.can_access_manager_dashboard && !profile.is_super_admin) {
+          db.prepare('UPDATE tutors SET user_id = ? WHERE id = ?').run(userId, profile.id);
+        }
       } else {
         db.prepare(`INSERT INTO tutors (id, user_id, full_name, email, phone, approved)
           VALUES (?, ?, ?, ?, ?, 0)`)
@@ -116,9 +123,11 @@ export function logout(req, res) {
   res.json({ ok: true });
 }
 
+// Session probe. Public pages call this on every load, so an anonymous
+// visitor gets a plain "nobody is signed in" answer rather than an error;
+// protected endpoints still answer 401.
 export function me(req, res) {
-  if (!req.user) throw unauthorized();
-  res.json(mePayload(req));
+  res.json(req.user ? mePayload(req) : { user: null, student: null, tutor: null });
 }
 
 export function changePassword(req, res) {
@@ -132,7 +141,13 @@ export function changePassword(req, res) {
   if (!bcrypt.compareSync(data.current_password, user.password_hash)) {
     throw badRequest('Current password is incorrect.');
   }
-  db.prepare("UPDATE users SET password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
-    .run(bcrypt.hashSync(data.new_password, 10), user.id);
+  const currentToken = req.signedCookies?.[SESSION_COOKIE];
+  db.transaction(() => {
+    db.prepare("UPDATE users SET password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(bcrypt.hashSync(data.new_password, 10), user.id);
+    // Changing the password revokes every other session for this account.
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?')
+      .run(user.id, currentToken ? hashToken(currentToken) : '');
+  })();
   res.json({ ok: true });
 }

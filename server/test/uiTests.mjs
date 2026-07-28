@@ -120,10 +120,18 @@ if (modalVisible) {
   const dayCells = await page.locator('button').filter({ hasText: /^(MON|TUE|WED|THU|FRI|SAT|SUN)/i }).all();
   check('seven-day navigation rendered', dayCells.length === 7, `day cells=${dayCells.length}`);
 
+  // Today's remaining hours depend on the clock, so move to the next week
+  // where a whole 9:00 to 17:00 window is bookable. This keeps the slot-rule
+  // assertions below deterministic whatever day and time the suite runs at.
+  await page.locator('button', { hasText: /^Next/ }).first().click();
+  await page.waitForTimeout(700);
+  const futureDayCells = await page.locator('button').filter({ hasText: /^(MON|TUE|WED|THU|FRI|SAT|SUN)/i }).all();
+  check('week navigation moves forward in 7-day groups', futureDayCells.length === 7, `day cells=${futureDayCells.length}`);
+
   // Find a day with availability and verify the 60-minute slot rules in the UI.
   let slotTexts = [];
   let etNote = false;
-  for (const cell of dayCells) {
+  for (const cell of futureDayCells) {
     await cell.click();
     await page.waitForTimeout(700);
     const body = await page.textContent('body');
@@ -141,6 +149,39 @@ if (modalVisible) {
   }), slotTexts.join(' | '));
   check('9:00 to 17:00 window ends with a 4:00 pm start', slotTexts.some((t) => /^4:00 pm to 5:00 pm/i.test(t.trim())), slotTexts.join(' | '));
   check('no slot starts at or after 5:00 pm', !slotTexts.some((t) => /^5:00 pm|^6:00 pm/i.test(t.trim())), slotTexts.join(' | '));
+
+  // Back on the current week: hours that already started today are still
+  // listed, but must not be clickable.
+  await page.locator('button', { hasText: /Previous/ }).first().click();
+  await page.waitForTimeout(700);
+  const etNow = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date());
+  const etWeekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', weekday: 'short',
+  }).format(new Date()).toUpperCase();
+
+  const todayCell = page.locator('button')
+    .filter({ hasText: new RegExp(`^${etWeekday}`, 'i') }).first();
+  await todayCell.click();
+  await page.waitForTimeout(700);
+
+  const to24 = (label) => {
+    const m = label.match(/(\d+):(\d+) (am|pm) to/i);
+    if (!m) return null;
+    const h = (Number(m[1]) % 12) + (m[3].toLowerCase() === 'pm' ? 12 : 0);
+    return `${String(h).padStart(2, '0')}:${m[2]}`;
+  };
+  const clickableToday = await page.locator('button')
+    .filter({ hasText: /\d+:\d+ (am|pm) to \d+:\d+ (am|pm)/i }).allTextContents();
+  const stillOfferedPastHours = clickableToday
+    .map((t) => to24(t))
+    .filter((start) => start && start < etNow);
+  check(
+    'hours that already started today are not clickable',
+    stillOfferedPastHours.length === 0,
+    `now=${etNow} offered=${stillOfferedPastHours.join(',')}`
+  );
 
   console.log('\n== Student sign out ==');
   const signOut = page.locator('button', { hasText: /sign out|log out/i }).first();

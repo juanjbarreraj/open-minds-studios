@@ -7,6 +7,15 @@ if (!process.env.SESSION_SECRET) {
 }
 
 const app = createApp();
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[server] Open Minds Studios local API listening on http://localhost:${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[server] Port ${PORT} is already in use. Stop the other process or set PORT in .env.`);
+  } else {
+    console.error('[server] Failed to start:', err);
+  }
+  process.exit(1);
 });

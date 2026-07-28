@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import db from '../db/database.js';
 import { isManager } from '../middleware/auth.js';
 import { badRequest, forbidden, notFound } from '../middleware/errors.js';
@@ -19,5 +20,11 @@ export function downloadFile(req, res) {
   })) {
     throw forbidden('You do not have access to this file.');
   }
-  res.download(absolutePathFor(fileRow), fileRow.original_name);
+  const absolutePath = absolutePathFor(fileRow);
+  if (!fs.existsSync(absolutePath)) {
+    // The row survived but the blob is gone (a wiped uploads directory, or a
+    // database restored without its files).
+    throw notFound('That file is no longer stored on this server.');
+  }
+  res.download(absolutePath, fileRow.original_name);
 }

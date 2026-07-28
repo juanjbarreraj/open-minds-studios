@@ -23,12 +23,18 @@ export default function BookingManager() {
 
   const load = async () => {
     setLoading(true);
-    const [b, t, c] = await Promise.all([
-      bookingsApi.list(),
-      tutorsApi.list(),
-      coursesApi.list(),
-    ]);
-    setBookings(b); setTutors(t); setCourses(c); setLoading(false);
+    try {
+      const [b, t, c] = await Promise.all([
+        bookingsApi.list(),
+        tutorsApi.list(),
+        coursesApi.list(),
+      ]);
+      setBookings(b); setTutors(t); setCourses(c);
+    } catch (err) {
+      flash(err?.message || 'Bookings could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -36,14 +42,28 @@ export default function BookingManager() {
 
   const save = async () => {
     setSaving(true);
-    await bookingsApi.managerUpdate(editing.id, { status: editForm.status, meeting_link: editForm.meeting_link });
-    flash('Booking updated.');
-    setSaving(false); setEditing(null); load();
+    try {
+      await bookingsApi.managerUpdate(editing.id, { status: editForm.status, meeting_link: editForm.meeting_link });
+      flash('Booking updated.');
+      setEditing(null);
+      load();
+    } catch (err) {
+      flash(err?.message || 'That booking could not be updated.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
-    await bookingsApi.remove(deleteId);
-    setDeleteId(null); flash('Booking deleted.'); load();
+    try {
+      await bookingsApi.remove(deleteId);
+      flash('Booking deleted.');
+      load();
+    } catch (err) {
+      flash(err?.message || 'That booking could not be deleted.');
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   const getTutorName = (id) => tutors.find(t => t.id === id)?.full_name || '-';

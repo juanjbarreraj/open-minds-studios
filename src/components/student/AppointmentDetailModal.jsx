@@ -38,6 +38,7 @@ const statusStyles = {
 export default function AppointmentDetailModal({ booking, tutor, course, date, onClose, onCancelled }) {
   const [cancelling, setCancelling] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   if (!booking) return null;
 
@@ -50,9 +51,18 @@ export default function AppointmentDetailModal({ booking, tutor, course, date, o
 
   const handleCancel = async () => {
     setCancelling(true);
-    await bookingsApi.updateStatus(booking.id, 'cancelled');
-    setCancelling(false);
-    if (onCancelled) onCancelled();
+    setCancelError('');
+    try {
+      await bookingsApi.updateStatus(booking.id, 'cancelled');
+      if (onCancelled) onCancelled();
+    } catch (err) {
+      // The booking may have changed since the modal opened (for example the
+      // tutor declined it), in which case cancelling is no longer valid.
+      setCancelError(err?.message || 'This appointment could not be cancelled. Refresh and try again.');
+      setConfirmCancel(false);
+    } finally {
+      setCancelling(false);
+    }
   };
 
   return (
@@ -152,6 +162,10 @@ export default function AppointmentDetailModal({ booking, tutor, course, date, o
               </div>
             )}
           </div>
+
+          {cancelError && (
+            <p className="text-sm text-red-600">{cancelError}</p>
+          )}
 
           {/* Cancel section */}
           {canCancel && (

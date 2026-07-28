@@ -84,11 +84,16 @@ export function canAccessFile(fileId, { user, student, tutor, manager }) {
   if (!fileRow) return false;
   if (fileRow.uploader_user_id === user.id) return true;
 
-  const mod = db
-    .prepare('SELECT * FROM modules WHERE file_id = ? OR submission_file_id = ? LIMIT 1')
-    .get(fileId, fileId);
-  if (!mod) return false;
-  if (tutor && mod.tutor_id === tutor.id) return true;
-  if (student && (mod.student_id === student.id || mod.student_email.toLowerCase() === student.email.toLowerCase())) return true;
-  return false;
+  // A file can be attached to several modules (one worksheet assigned to a
+  // whole roster), so every module it belongs to has to be considered.
+  const mods = db
+    .prepare('SELECT * FROM modules WHERE file_id = ? OR submission_file_id = ?')
+    .all(fileId, fileId);
+  return mods.some((mod) => {
+    if (tutor && mod.tutor_id === tutor.id) return true;
+    if (student && (mod.student_id === student.id || mod.student_email.toLowerCase() === student.email.toLowerCase())) {
+      return true;
+    }
+    return false;
+  });
 }

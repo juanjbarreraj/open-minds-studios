@@ -14,25 +14,41 @@ export default function CourseManager() {
   const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState('');
 
-  const load = async () => { setLoading(true); setCourses(await coursesApi.list()); setLoading(false); };
+  const load = async () => {
+    setLoading(true);
+    try { setCourses(await coursesApi.list()); }
+    catch (err) { flash(err?.message || 'Courses could not be loaded.'); }
+    finally { setLoading(false); }
+  };
   useEffect(() => { load(); }, []);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
 
   const save = async () => {
     setSaving(true);
-    if (editing === 'new') { await coursesApi.create(form); flash('Course created.'); }
-    else { await coursesApi.update(editing.id, form); flash('Course updated.'); }
-    setSaving(false);
-    setEditing(null);
-    load();
+    try {
+      if (editing === 'new') { await coursesApi.create(form); flash('Course created.'); }
+      else { await coursesApi.update(editing.id, form); flash('Course updated.'); }
+      setEditing(null);
+      load();
+    } catch (err) {
+      // For example a duplicate course code.
+      flash(err?.message || 'That course could not be saved.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
-    await coursesApi.remove(deleteId);
-    setDeleteId(null);
-    flash('Course deleted.');
-    load();
+    try {
+      await coursesApi.remove(deleteId);
+      flash('Course deleted.');
+      load();
+    } catch (err) {
+      flash(err?.message || 'That course could not be deleted.');
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   const filtered = courses.filter(c =>

@@ -117,24 +117,33 @@ export function managerUpdate(req, res) {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) throw notFound('Booking not found');
 
+  if (data.meeting_link !== undefined) {
+    db.prepare(`UPDATE bookings SET meeting_link = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`)
+      .run(data.meeting_link, booking.id);
+  }
+
   if (data.status && data.status !== booking.status) {
-    // A manager may need to force a status; still guard the double-book rule
-    // when reviving into a live status.
+    // Reviving a booking into a live status must not resurrect a conflict
+    // with whoever took the freed slot.
     if (LIVE_STATUSES.includes(data.status)) {
       const clash = db.prepare(`SELECT id FROM bookings
-          WHERE tutor_id = ? AND session_date = ? AND preferred_start_time = ?
+          WHERE tutor_id = ? AND session_date = ?
+          AND preferred_start_time < ? AND preferred_end_time > ?
           AND status IN ('pending', 'confirmed') AND id != ?`)
-        .get(booking.tutor_id, booking.session_date, booking.preferred_start_time, booking.id);
+        .get(booking.tutor_id, booking.session_date, booking.preferred_end_time,
+          booking.preferred_start_time, booking.id);
       if (clash) throw badRequest('Another live booking already occupies that slot.');
+    }
+    // Route through the same state machine as everyone else so the allowed
+    // moves and the cancelled_at / declined_at stamps stay consistent.
+    const updated = transitionBooking({ bookingId: booking.id, actor: 'manager', nextStatus: data.status });
+    const t = tutorFor(updated);
+    const eventByStatus = { confirmed: 'booking.confirmed', declined: 'booking.declined', cancelled: 'booking.cancelled' };
+    if (eventByStatus[data.status]) {
+      notifyBookingEvent(eventByStatus[data.status], updated, { tutorEmail: t?.email, tutorName: t?.full_name });
     }
   }
 
-  db.prepare(`UPDATE bookings SET
-      status = COALESCE(@status, status),
-      meeting_link = COALESCE(@meeting_link, meeting_link),
-      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = @id`)
-    .run({ id: booking.id, status: data.status ?? null, meeting_link: data.meeting_link ?? null });
   res.json(serializeRow(db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id)));
 }
 

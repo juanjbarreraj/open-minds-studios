@@ -13,7 +13,9 @@ export function attachUser(req, res, next) {
   req.student = null;
   req.tutor = null;
 
-  const token = req.signedCookies?.[SESSION_COOKIE] || req.cookies?.[SESSION_COOKIE];
+  // Signed cookies only. Accepting the raw value would defeat cookie signing
+  // and allow session fixation by anyone able to set a cookie on the domain.
+  const token = req.signedCookies?.[SESSION_COOKIE];
   if (!token) return next();
 
   const session = db
@@ -30,13 +32,20 @@ export function attachUser(req, res, next) {
 
   req.user = serializeRow(user);
   delete req.user.password_hash;
-  req.student = serializeRow(
-    db.prepare('SELECT * FROM students WHERE user_id = ? OR email = ? COLLATE NOCASE').get(user.id, user.email)
-  ) || null;
-  req.tutor = serializeRow(
-    db.prepare('SELECT * FROM tutors WHERE user_id = ? OR email = ? COLLATE NOCASE').get(user.id, user.email)
-  ) || null;
+  // Profiles are resolved by explicit link only. Matching on email would let
+  // anyone who registers with a known address inherit that profile's standing.
+  const { student, tutor } = loadLinkedProfiles(user.id);
+  req.student = student;
+  req.tutor = tutor;
   return next();
+}
+
+// Shared by attachUser and the login/register controllers.
+export function loadLinkedProfiles(userId) {
+  return {
+    student: serializeRow(db.prepare('SELECT * FROM students WHERE user_id = ?').get(userId)) || null,
+    tutor: serializeRow(db.prepare('SELECT * FROM tutors WHERE user_id = ?').get(userId)) || null,
+  };
 }
 
 export function requireAuth(req, res, next) {
@@ -65,6 +74,17 @@ export function requireApprovedTutor(req, res, next) {
   if (!req.tutor) return next(forbidden('Tutor profile required'));
   if (!req.tutor.approved) return next(forbidden('Tutor account is pending approval'));
   return next();
+}
+
+// Any account with active standing in the portal: a manager, an approved
+// tutor, or an approved student. Suspending an account (clearing `approved`)
+// must immediately stop it from reading or changing portal data.
+export function requirePortalAccess(req, res, next) {
+  if (!req.user) return next(unauthorized());
+  if (isManager(req)) return next();
+  if (req.tutor?.approved) return next();
+  if (req.student?.approved && req.student?.can_access_student_portal) return next();
+  return next(forbidden('Your account does not have portal access yet.'));
 }
 
 export function requireApprovedStudent(req, res, next) {

@@ -28,24 +28,30 @@ export default function AssignModuleModal({ student, onClose, onSuccess }) {
 
     let fileId = null;
 
-    if (file) {
-      setUploading(true);
-      const { id } = await filesApi.upload(file);
-      fileId = id;
+    try {
+      if (file) {
+        setUploading(true);
+        const { id } = await filesApi.upload(file);
+        fileId = id;
+        setUploading(false);
+      }
+
+      await modulesApi.create({
+        student_email: student.email,
+        student_name: student.name,
+        name: form.name.trim(),
+        description: form.description.trim(),
+        file_id: fileId,
+      });
+
+      setDone(true);
+      setTimeout(() => onSuccess(), 1200);
+    } catch (err) {
+      setError(err?.message || 'The module could not be assigned. Please try again.');
+    } finally {
       setUploading(false);
+      setSaving(false);
     }
-
-    await modulesApi.create({
-      student_email: student.email,
-      student_name: student.name,
-      name: form.name.trim(),
-      description: form.description.trim(),
-      file_id: fileId,
-    });
-
-    setSaving(false);
-    setDone(true);
-    setTimeout(() => onSuccess(), 1200);
   };
 
   return (

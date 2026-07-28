@@ -37,6 +37,7 @@ cp .env.example .env
 | `DATABASE_PATH` | `server/db/data/openminds.db` | SQLite file location |
 | `UPLOADS_DIR` | `server/uploads` | Where uploaded files are stored |
 | `CORS_ORIGIN` | `http://localhost:5173` | Allowed browser origin |
+| `NODE_ENV` | unset | When set to `production`, session cookies get the `Secure` flag (HTTPS only). Leave unset for local HTTP. |
 | `VITE_API_BASE_URL` | `/api` | Frontend API base. Leave unset locally; set a full URL when the backend is hosted separately. |
 
 `.env` is git-ignored. No secret belongs in a `VITE_`-prefixed variable, because
@@ -58,6 +59,10 @@ inserting demo data. Migrations are plain SQL files in
 Tables: `users`, `sessions`, `students`, `tutors`, `courses`, `tutor_courses`,
 `availability_slots`, `bookings`, `files`, `modules`, `inquiries`,
 `notification_outbox`.
+
+Deleting a tutor is restricted at the database level when appointments or
+modules reference them, so student history cannot be destroyed by a single
+delete. Managers turn off approval instead.
 
 ## 5. Demo accounts (local only)
 
@@ -111,14 +116,29 @@ re-seeds. Uploaded files are not removed by this command; clear them with
 ## 8. Testing roles
 
 ```bash
-npm run test:api
+npm run test:api   # 100 backend checks, temporary database, no dev stack needed
+npm run test:ui    # 45 browser checks, requires `npm run dev` running
 ```
 
-Runs 69 automated backend checks against a temporary database in your system
-temp directory, covering login, role enforcement, per-role data scoping,
-scheduling rules, double booking, the booking lifecycle, module workflow, upload
-permissions, inquiries, and the notification outbox. It leaves your development
-database untouched.
+`npm run test:api` runs against a throwaway database in your system temp
+directory and leaves your development data untouched. It covers login, role
+enforcement, per-role data scoping, scheduling rules, double booking, the
+booking lifecycle, module workflow, upload permissions, inquiries, the
+notification outbox, identity and privilege boundaries, session integrity,
+suspension, history preservation, and malformed-request handling.
+
+`npm run test:ui` drives a real browser (Playwright) against
+http://localhost:5173 with the dev stack running. It checks that public pages
+render without authentication, the subscription program carries to the contact
+form, the contact form submits, all three dashboards load, the scheduling grid
+follows the 60-minute and Eastern Time rules, unapproved accounts are blocked,
+and no request reaches any Base44 host.
+
+Playwright downloads a browser on first use:
+
+```bash
+npx playwright install chromium
+```
 
 Manual role walkthrough:
 
@@ -133,7 +153,14 @@ Manual role walkthrough:
 
 Authorization is enforced by the backend, not the browser. Every scoped
 endpoint filters by the session identity, so a student cannot read another
-student's records by editing frontend code.
+student's records by editing frontend code. Removing an account's approval
+takes effect on the next request: portal reads and writes return 403
+immediately, without waiting for the session to expire.
+
+The scheduling grid shows other students' booked slots as taken, but the API
+returns only the tutor, date, and time for bookings that are not yours. Names,
+emails, phone numbers, and assignment text never leave the server for someone
+else's booking.
 
 ## 9. Local uploads
 
@@ -164,20 +191,34 @@ seam where a real provider gets implemented later.
 - **No payments.** Stripe packages remain in `package.json` from the original
   scaffold but nothing in the app calls them.
 - **No password reset or email verification.** Managers create and approve
-  accounts; there is no self-service recovery flow yet.
-- **Sessions are database-backed cookies** with a 7-day lifetime and no refresh
-  or revocation UI beyond signing out.
+  accounts; there is no self-service recovery flow yet. This is also why
+  registration never adopts an approved profile on its own (see below).
+- **Profiles link to accounts explicitly.** Registering with the same email as
+  a manager-created profile does not inherit that profile when it is approved
+  or has manager or super admin flags, because nothing proves the registrant
+  owns the address. The manager links it from the Students or Tutors tab
+  ("Portal account: Not linked" then "Link"). Adding email verification would
+  let this become automatic again.
+- **Sessions are database-backed cookies** with a 7-day lifetime. Changing a
+  password revokes every other session; there is no other revocation UI beyond
+  signing out.
 - **Single-process SQLite.** Fine for development; a hosted deployment should
   move to a managed database.
 - **Google sign-in is gone.** The old hosted login offered it; local auth is
   email and password only. The `auth_provider` column is preserved for when a
   provider is added back.
 - **Rate limiting and CAPTCHA are absent** on the public inquiry endpoint.
-- **Tutors are matched to user accounts by email** when no `user_id` link
-  exists, preserving the previous behavior; new accounts link by ID.
-- Pre-existing `npm run typecheck` errors remain in a few JSX files (implicit
-  prop types under `checkJs`). They are unrelated to data access and predate
-  this migration. `npm run lint` is clean.
+- **Daylight saving edge cases are not modeled.** Times are Eastern Time
+  wall-clock strings, so the hour that does not exist on the spring-forward
+  Sunday (and the repeated hour in autumn) is not specially handled.
+- **A tutor cannot release a session they already confirmed.** The tutor UI
+  offers accept and decline only while a request is pending; a manager changes
+  a confirmed booking from the Bookings tab.
+- **A grade cannot be corrected once submitted.** Grading moves a module to
+  `graded`, which is terminal, and the review queue only lists submitted work.
+- **Tutors with history cannot be deleted.** Deleting would take student
+  appointment and module records with it, so the API refuses and asks the
+  manager to turn off approval instead.
 
 ## 12. Future production migration
 

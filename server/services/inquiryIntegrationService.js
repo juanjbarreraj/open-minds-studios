@@ -27,8 +27,14 @@ async function sendToGoogleSheets(payload) {
   console.log(JSON.stringify(payload, null, 2));
 }
 
+// The inquiry itself is already committed by the time this runs, so no
+// downstream integration may turn a saved inquiry into a failed request.
 export async function processNewInquiry(inquiry) {
-  notifyNewInquiry(inquiry);
+  try {
+    notifyNewInquiry(inquiry);
+  } catch (err) {
+    console.error('[inquiry] Notification outbox failed (non-blocking):', err);
+  }
   try {
     await sendToGoogleSheets(toSheetsPayload(inquiry));
   } catch (err) {

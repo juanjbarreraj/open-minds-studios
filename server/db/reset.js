@@ -1,5 +1,8 @@
 // Deletes the local SQLite database, then re-runs migrations and seed.
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { DB_PATH, db } from './database.js';
 
 db.close();
@@ -9,10 +12,8 @@ for (const suffix of ['', '-wal', '-shm']) {
 }
 console.log(`[db] removed ${DB_PATH}`);
 
-// Re-import in a fresh process so database.js reopens the file cleanly.
-const { spawnSync } = await import('node:child_process');
-const seed = spawnSync(process.execPath, [new URL('./seed.js', import.meta.url).pathname], {
-  stdio: 'inherit',
-  env: process.env,
-});
+// Re-seed in a fresh process so database.js reopens the file cleanly.
+// fileURLToPath (not URL.pathname) so paths with spaces or non-ASCII work.
+const seedPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'seed.js');
+const seed = spawnSync(process.execPath, [seedPath], { stdio: 'inherit', env: process.env });
 process.exit(seed.status ?? 0);

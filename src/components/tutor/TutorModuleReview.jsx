@@ -13,14 +13,21 @@ function GradeCard({ mod, onGraded }) {
   const [feedback, setFeedback] = useState(mod.feedback || '');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    await modulesApi.grade(mod.id, grade.trim(), feedback.trim());
-    setSaving(false);
-    setDone(true);
-    onGraded?.();
+    setError('');
+    try {
+      await modulesApi.grade(mod.id, grade.trim(), feedback.trim());
+      setDone(true);
+      onGraded?.();
+    } catch (err) {
+      setError(err?.message || 'The grade could not be saved. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -99,6 +106,7 @@ function GradeCard({ mod, onGraded }) {
               {saving ? 'Submitting...' : 'Submit Grade'}
             </button>
           </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
         </form>
       )}
     </div>
@@ -108,12 +116,19 @@ function GradeCard({ mod, onGraded }) {
 export default function TutorModuleReview({ tutorId }) {
   const [modules, setModules] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const load = async () => {
-    const mods = await modulesApi.list({ status: 'submitted' });
-    mods.sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
-    setModules(mods);
-    setLoading(false);
+    try {
+      const mods = await modulesApi.list({ status: 'submitted' });
+      mods.sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
+      setModules(mods);
+      setLoadError('');
+    } catch (err) {
+      setLoadError(err?.message || 'Submissions could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { if (tutorId) load(); }, [tutorId]);
@@ -121,6 +136,12 @@ export default function TutorModuleReview({ tutorId }) {
   if (loading) return (
     <div className="flex justify-center py-10">
       <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-8 text-center text-sm text-red-600">
+      {loadError}
     </div>
   );
 

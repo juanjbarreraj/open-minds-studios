@@ -2,6 +2,7 @@ import { z } from 'zod';
 import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
+import { firstQueryValue } from '../lib/query.js';
 import { notFound, conflict } from '../middleware/errors.js';
 
 const courseSchema = z.object({
@@ -44,7 +45,7 @@ const tutorCourseSchema = z.object({
 });
 
 export function listTutorCourses(req, res) {
-  const { tutor_id } = req.query;
+  const tutor_id = firstQueryValue(req.query.tutor_id);
   const rows = tutor_id
     ? db.prepare('SELECT * FROM tutor_courses WHERE tutor_id = ?').all(tutor_id)
     : db.prepare('SELECT * FROM tutor_courses').all();

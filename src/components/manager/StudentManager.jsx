@@ -14,7 +14,12 @@ export default function StudentManager() {
   const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState('');
 
-  const load = async () => { setLoading(true); setStudents(await studentsApi.list()); setLoading(false); };
+  const load = async () => {
+    setLoading(true);
+    try { setStudents(await studentsApi.list()); }
+    catch (err) { flash(err?.message || 'Students could not be loaded.'); }
+    finally { setLoading(false); }
+  };
   useEffect(() => { load(); }, []);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -24,19 +29,50 @@ export default function StudentManager() {
     setSaving(true);
     const data = { ...form };
     if (!data.full_name) data.full_name = `${data.first_name} ${data.last_name}`.trim();
-    if (editing === 'new') { await studentsApi.create(data); flash('Student created.'); }
-    else { await studentsApi.update(editing.id, data); flash('Student updated.'); }
-    setSaving(false); setEditing(null); load();
+    try {
+      if (editing === 'new') { await studentsApi.create(data); flash('Student created.'); }
+      else { await studentsApi.update(editing.id, data); flash('Student updated.'); }
+      setEditing(null);
+      load();
+    } catch (err) {
+      flash(err?.message || 'That student could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Registration never adopts an approved profile on its own, so a manager
+  // connects the profile to the family's portal account here.
+  const toggleLink = async (s) => {
+    try {
+      const updated = await studentsApi.link(s.id, !s.user_id);
+      setEditing(updated);
+      flash(updated.user_id ? 'Portal account linked.' : 'Portal account unlinked.');
+      load();
+    } catch (err) {
+      flash(err?.message || 'The portal account could not be linked.');
+    }
   };
 
   const confirmDelete = async () => {
-    await studentsApi.remove(deleteId);
-    setDeleteId(null); flash('Student deleted.'); load();
+    try {
+      await studentsApi.remove(deleteId);
+      flash('Student deleted.');
+      load();
+    } catch (err) {
+      flash(err?.message || 'That student could not be deleted.');
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   const toggleField = async (student, field) => {
-    await studentsApi.update(student.id, { [field]: !student[field] });
-    load();
+    try {
+      await studentsApi.update(student.id, { [field]: !student[field] });
+      load();
+    } catch (err) {
+      flash(err?.message || 'That change could not be saved.');
+    }
   };
 
   const filtered = students.filter(s =>
@@ -66,6 +102,21 @@ export default function StudentManager() {
             <input placeholder="Last Name" value={form.last_name} onChange={e => f('last_name', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <input placeholder="Email*" value={form.email} onChange={e => f('email', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <input placeholder="Phone" value={form.phone || ''} onChange={e => f('phone', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            {editing !== 'new' && (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm sm:col-span-2">
+                <span className="text-slate-500">Portal account:</span>
+                <span className={editing.user_id ? 'font-medium text-emerald-600' : 'text-slate-400'}>
+                  {editing.user_id ? 'Linked' : 'Not linked'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleLink(editing)}
+                  className="ml-auto rounded-lg border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  {editing.user_id ? 'Unlink' : 'Link'}
+                </button>
+              </div>
+            )}
             <textarea placeholder="Notes" value={form.notes || ''} onChange={e => f('notes', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm sm:col-span-2 min-h-[70px]" />
           </div>
           <div className="flex flex-wrap gap-4 text-sm">

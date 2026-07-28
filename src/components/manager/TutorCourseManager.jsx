@@ -15,15 +15,20 @@ export default function TutorCourseManager() {
 
   const load = async () => {
     setLoading(true);
-    const [t, c, tc] = await Promise.all([
-      tutorsApi.list(),
-      coursesApi.list(),
-      tutorCoursesApi.list(),
-    ]);
-    setTutors(t);
-    setCourses(c);
-    setTutorCourses(tc);
-    setLoading(false);
+    try {
+      const [t, c, tc] = await Promise.all([
+        tutorsApi.list(),
+        coursesApi.list(),
+        tutorCoursesApi.list(),
+      ]);
+      setTutors(t);
+      setCourses(c);
+      setTutorCourses(tc);
+    } catch (err) {
+      flash(err?.message || 'Assignments could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -43,14 +48,19 @@ export default function TutorCourseManager() {
     } catch (err) {
       if (err?.status === 409) { flash('Assignment already exists.'); }
       else { flash(err?.message || 'Something went wrong.'); }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleDelete = async (id) => {
-    await tutorCoursesApi.remove(id);
-    flash('Assignment removed.');
-    load();
+    try {
+      await tutorCoursesApi.remove(id);
+      flash('Assignment removed.');
+      load();
+    } catch (err) {
+      flash(err?.message || 'That assignment could not be removed.');
+    }
   };
 
   // Group by tutor

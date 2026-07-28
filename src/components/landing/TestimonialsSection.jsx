@@ -34,8 +34,7 @@ export default function TestimonialsSection() {
           <motion.div
             key={item.quote}
             className="relative rounded-2xl p-6 transition-all duration-[250ms] ease-out hover:-translate-y-1"
-            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.4)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
-            style={{ borderColor: 'rgba(58,154,202,0.15)' }}
+            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(58,154,202,0.15)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
             {...inView}
             transition={{ duration: 0.5, delay: i * 0.08 }}
           >

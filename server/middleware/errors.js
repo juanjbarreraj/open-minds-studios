@@ -23,8 +23,24 @@ export function errorHandler(err, req, res, next) {
   if (err?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
     return res.status(409).json({ error: 'That record conflicts with an existing one.' });
   }
-  if (err?.type === 'entity.too.large' || err?.code === 'LIMIT_FILE_SIZE') {
+  // SQLite reports ON DELETE RESTRICT violations as CONSTRAINT_TRIGGER.
+  if (err?.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' || err?.code === 'SQLITE_CONSTRAINT_TRIGGER') {
+    return res.status(400).json({
+      error: 'That request references a record that no longer exists, or one that still has related records.',
+    });
+  }
+  if (err?.code === 'LIMIT_FILE_SIZE' || err?.type === 'entity.too.large') {
     return res.status(413).json({ error: 'Upload is too large.' });
+  }
+  // Remaining multer rejections (unexpected field, too many files, ...).
+  if (typeof err?.code === 'string' && err.code.startsWith('LIMIT_')) {
+    return res.status(400).json({ error: 'That upload could not be accepted. Send a single file in the "file" field.' });
+  }
+  // Body-parser and other libraries attach their own HTTP status (e.g. a
+  // malformed JSON body is a 400, not a server fault).
+  const libraryStatus = err?.status || err?.statusCode;
+  if (Number.isInteger(libraryStatus) && libraryStatus >= 400 && libraryStatus < 500) {
+    return res.status(libraryStatus).json({ error: libraryStatus === 400 ? 'Invalid request body' : err.message });
   }
   console.error('[api] unexpected error:', err);
   return res.status(500).json({ error: 'Internal server error' });

@@ -21,6 +21,7 @@ export default function TutorDashboard() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('loading'); // loading | no-auth | no-tutor | pending | approved
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const loadData = useCallback(async (tutorId) => {
     const [bookingData, slotData, tcData, courseData] = await Promise.all([
@@ -42,9 +43,17 @@ export default function TutorDashboard() {
       if (!tutor) { setStatus('no-tutor'); setLoading(false); return; }
       if (!tutor.approved) { setStatus('pending'); setLoading(false); return; }
       setLoading(true);
-      await loadData(tutor.id);
-      setStatus('approved');
-      setLoading(false);
+      try {
+        await loadData(tutor.id);
+        setLoadError('');
+      } catch (err) {
+        // Show the dashboard shell with an explanation rather than spinning
+        // forever behind a full-screen loader.
+        setLoadError(err?.message || 'Some dashboard data could not be loaded.');
+      } finally {
+        setStatus('approved');
+        setLoading(false);
+      }
     })();
   }, [isLoadingAuth, isAuthenticated, tutor, loadData]);
 
@@ -137,6 +146,11 @@ export default function TutorDashboard() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-10">
+        {loadError && (
+          <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {loadError}
+          </div>
+        )}
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
           {/* Left column */}
           <div className="space-y-8">

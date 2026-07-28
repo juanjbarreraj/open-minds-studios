@@ -86,22 +86,69 @@ defect the `session_date` column fixes, and `server/services/notificationService
 noting where the email templates were ported from), and inside the archived
 reference files under `docs/legacy-base44/`.
 
+## Post-migration hardening round
+
+After the phases above completed, the migrated code was reviewed adversarially
+and the confirmed defects were fixed. Grouped by what they affected:
+
+### Authorization and identity
+
+| Defect | Fix |
+|---|---|
+| Registering with a manager-created profile's email silently inherited that profile, including manager and super admin flags (full takeover) | Profiles resolve by `user_id` only, never by email. Registration adopts a pre-created profile only when it carries no standing at all; anything approved or elevated must be linked by a manager (`POST /api/students/:id/link`, `POST /api/tutors/:id/link`, surfaced in the manager UI as "Portal account: Linked / Not linked"). |
+| Booking status changes, booking reads, module reads, and uploads required only a session, so a suspended account kept working | New `requirePortalAccess` middleware on those routes: manager, approved tutor, or approved student. Removing approval takes effect on the next request. |
+| A non-super-admin manager could strip the super admin's flags (only granting was guarded) | `guardElevatedFlags` now fires on any change to the elevated flags, in either direction. |
+| Any authenticated account, including a throwaway registration, could enumerate every approved tutor's email | Listing tutors now requires portal standing. |
+| The session cookie fell back to its unsigned value, allowing session fixation | Signed cookies only. |
+| Changing a password left other sessions active; expired sessions were never purged | Password change revokes all other sessions; expired rows are cleaned on login. |
+| Editing a profile's email could re-point it at a different login | Email changes are refused while a portal account is linked. |
+
+### Data integrity
+
+| Defect | Fix |
+|---|---|
+| Deleting a tutor cascade-deleted every booking and module, including graded student work | Migration `002_preserve_history.sql` rebuilds both tables with `ON DELETE RESTRICT`; the API explains that approval should be turned off instead. |
+| A module could reference any file id, granting its student and tutor access to a file they never had | Attaching a file requires the caller to be its uploader (or a manager). |
+| A file attached to more than one module was readable by only one of them | File access considers every module the file belongs to. |
+| Duplicate course codes were silently allowed | Unique index on `course_code`. |
+| Manager booking edits bypassed the state machine and never stamped `cancelled_at` / `declined_at` | Manager edits route through `transitionBooking` (with every status reachable for that role) and keep the audit stamps. |
+
+### Scheduling correctness
+
+| Defect | Fix |
+|---|---|
+| The grid computed today, past days, and the 30-day window in the browser's time zone while the server validated in America/New_York | `src/lib/appTime.js` anchors the grid to Eastern Time; the booking payload uses the same calendar date. |
+| Slots earlier today were still offered and accepted | The server rejects a start time that already passed today; the grid renders those hours disabled. |
+| Days past the 30-day limit were reachable inside the last navigable week | Individual day cells and their slots are checked against the limit, not just the Next button. |
+| Overlapping availability windows let two sessions collide | Overlapping windows are rejected on create and update, and the booking conflict check compares time ranges rather than identical start times. |
+
+### Error handling
+
+| Defect | Fix |
+|---|---|
+| Foreign-key violations, malformed JSON bodies, and most multer rejections returned 500 | Mapped to 400, 404, 409, or 413 as appropriate. |
+| Repeated query parameters crashed list endpoints | Query values are collapsed to a single string. |
+| Downloading a file whose blob was missing returned 500 | Returns 404 with a clear message. |
+| Every action button in the app (accept, decline, cancel, save, delete, upload, grade, assign) stayed disabled forever when the server rejected the request, and several loaders spun forever on failure | Each handler now releases its state and surfaces the server's message in the component's existing error area. |
+| `npm run db:reset` broke on paths with spaces after deleting the database | Uses `fileURLToPath` instead of `URL.pathname`. |
+| Notification failures could surface as a failed inquiry after the inquiry was already saved | The integration service guards both adapters. |
+
+### Product behavior
+
+| Defect | Fix |
+|---|---|
+| Declined and cancelled bookings vanished from the student's view entirely, so a decline was invisible in-app | Active lists stay clean, but session history now shows them with their status label. |
+| The tutor's student roster dropped anyone whose only session was completed, making them unassignable | The roster counts confirmed and completed sessions. |
+| The Tutor form's Auth Provider dropdown discarded its value | Replaced with the portal-account link control described above. |
+| A duplicate `style` prop silently dropped the testimonial cards' glass treatment | Merged into one style object, restoring the intended design. |
+
 ## Verification summary
 
 | Check | Result |
 |---|---|
 | `npm run build` | Succeeds; `dist/` contains no Base44 reference |
 | `npm run lint` | Clean (baseline had 18 errors) |
-| `npm run typecheck` | 4 pre-existing errors remain, down from 15; none in migrated data-access code |
-| `npm run test:api` | 69 passed, 0 failed |
-| Browser suite (`server/test/uiTests.mjs`) | 43 passed, 0 failed |
+| `npm run typecheck` | Clean (baseline had 15 errors) |
+| `npm run test:api` | 100 passed, 0 failed |
+| `npm run test:ui` | 45 passed, 0 failed, 0 console errors |
 | Network requests to any Base44 host during a full browser session | zero |
-
-## Pre-existing issues left untouched (not migration defects)
-
-- `src/components/landing/TestimonialsSection.jsx:38` has a duplicate `style`
-  attribute, so the glass-effect style object is silently dropped by JSX. Fixing
-  it would change the rendered design, so it was left alone and reported here.
-- `src/pages/Services.jsx` passes no `children` to a component that destructures
-  it (3 call sites), and Tailwind warns that `duration-[250ms]` is ambiguous.
-  Both predate the migration.

@@ -3,22 +3,23 @@ import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
 import { isManager } from '../middleware/auth.js';
+import { firstQueryValue } from '../lib/query.js';
 import { badRequest, forbidden, notFound } from '../middleware/errors.js';
 
-function fileInfo(fileId) {
+// Only the account that uploaded a file may attach it to a module. Without
+// this, any known file id could be re-shared with an unrelated student.
+function fileInfo(fileId, req) {
   if (!fileId) return { url: null, name: null };
   const row = db.prepare('SELECT * FROM files WHERE id = ?').get(fileId);
   if (!row) throw badRequest('Uploaded file not found. Try uploading again.');
+  if (!isManager(req) && row.uploader_user_id !== req.user.id) {
+    throw forbidden('You can only attach files you uploaded.');
+  }
   return { url: `/api/files/${row.id}`, name: row.original_name };
 }
 
-const isOwnModule = (req, mod) =>
-  (req.tutor && mod.tutor_id === req.tutor.id) ||
-  (req.student &&
-    (mod.student_id === req.student.id || mod.student_email.toLowerCase() === req.student.email.toLowerCase()));
-
 export function listModules(req, res) {
-  const { status } = req.query;
+  const status = firstQueryValue(req.query.status);
   let rows;
   if (isManager(req)) {
     rows = db.prepare('SELECT * FROM modules ORDER BY created_at DESC').all();
@@ -53,7 +54,7 @@ export function createModule(req, res) {
     ? db.prepare('SELECT * FROM students WHERE id = ?').get(data.student_id)
     : db.prepare('SELECT * FROM students WHERE email = ? COLLATE NOCASE').get(data.student_email);
 
-  const file = fileInfo(data.file_id);
+  const file = fileInfo(data.file_id, req);
   const id = newId();
   db.prepare(`INSERT INTO modules
       (id, tutor_id, student_id, student_email, tutor_name, student_name, name, description,
@@ -91,7 +92,7 @@ export function submitModule(req, res) {
   if (mod.status === 'graded') throw badRequest('This module has already been graded.');
 
   const data = submitSchema.parse(req.body);
-  const file = fileInfo(data.file_id);
+  const file = fileInfo(data.file_id, req);
   db.prepare(`UPDATE modules SET submission_file_id = @file_id, student_submission_url = @url,
       student_submission_name = @name, status = 'submitted',
       submitted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),

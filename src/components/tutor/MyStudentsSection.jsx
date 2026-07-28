@@ -6,8 +6,10 @@ export default function MyStudentsSection({ bookings, onModuleAssigned }) {
   const [hoveredId, setHoveredId] = useState(null);
   const [assigningStudent, setAssigningStudent] = useState(null);
 
-  // Derive unique accepted students from confirmed bookings
-  const confirmedBookings = bookings.filter(b => b.status === 'confirmed');
+  // Students the tutor has actually accepted: confirmed sessions plus ones
+  // already delivered, so a student does not disappear from the roster (and
+  // become unassignable) as soon as their session is marked completed.
+  const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
 
   const studentMap = {};
   for (const b of confirmedBookings) {
