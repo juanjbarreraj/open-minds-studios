@@ -5,7 +5,7 @@ export default function TutorProfile({ tutor, courses }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-blue/15 text-brand-blue">
           <User className="h-7 w-7" />
         </div>
         <div>
@@ -40,7 +40,7 @@ export default function TutorProfile({ tutor, courses }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {courses.map((c) => (
-              <span key={c.id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600">
+              <span key={c.id} className="rounded-full bg-brand-blue/10 px-3 py-1 text-xs font-medium text-brand-blue">
                 {c.course_code} - {c.course_name}
               </span>
             ))}

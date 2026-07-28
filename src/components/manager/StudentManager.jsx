@@ -87,16 +87,16 @@ export default function StudentManager() {
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search students..." className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-indigo-300" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search students..." className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-brand-blue/50" />
         </div>
-        <button onClick={() => { setEditing('new'); setForm({ ...empty }); }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+        <button onClick={() => { setEditing('new'); setForm({ ...empty }); }} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep">
           <Plus className="h-4 w-4" /> Add Student
         </button>
       </div>
 
       {editing && (
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-4">
-          <div className="text-sm font-semibold text-indigo-700">{editing === 'new' ? 'New Student' : 'Edit Student'}</div>
+        <div className="rounded-2xl border border-brand-blue/15 bg-brand-blue/10 p-5 space-y-4">
+          <div className="text-sm font-semibold text-brand-blue-deep">{editing === 'new' ? 'New Student' : 'Edit Student'}</div>
           <div className="grid gap-3 sm:grid-cols-2">
             <input placeholder="First Name" value={form.first_name} onChange={e => f('first_name', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <input placeholder="Last Name" value={form.last_name} onChange={e => f('last_name', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
@@ -128,7 +128,7 @@ export default function StudentManager() {
             </label>
           </div>
           <div className="flex gap-2">
-            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
             </button>
             <button onClick={() => setEditing(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"><X className="h-4 w-4" /></button>
@@ -175,7 +175,7 @@ export default function StudentManager() {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <button onClick={() => toggleField(s, 'can_access_student_portal')} className={s.can_access_student_portal ? 'text-indigo-500' : 'text-slate-300'}>
+                    <button onClick={() => toggleField(s, 'can_access_student_portal')} className={s.can_access_student_portal ? 'text-brand-blue' : 'text-slate-300'}>
                       {s.can_access_student_portal ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
                     </button>
                   </td>

@@ -125,7 +125,7 @@ export default function SuperAdminTools() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Find an appointment..."
-            className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-indigo-300"
+            className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-brand-blue/50"
           />
         </div>
 

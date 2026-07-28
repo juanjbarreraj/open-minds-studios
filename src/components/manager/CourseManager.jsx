@@ -63,22 +63,22 @@ export default function CourseManager() {
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search courses..." className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-indigo-300" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search courses..." className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-brand-blue/50" />
         </div>
-        <button onClick={() => { setEditing('new'); setForm({ ...empty }); }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+        <button onClick={() => { setEditing('new'); setForm({ ...empty }); }} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep">
           <Plus className="h-4 w-4" /> Add Course
         </button>
       </div>
 
       {editing && (
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-3">
-          <div className="text-sm font-semibold text-indigo-700">{editing === 'new' ? 'New Course' : 'Edit Course'}</div>
+        <div className="rounded-2xl border border-brand-blue/15 bg-brand-blue/10 p-5 space-y-3">
+          <div className="text-sm font-semibold text-brand-blue-deep">{editing === 'new' ? 'New Course' : 'Edit Course'}</div>
           <div className="grid gap-3 sm:grid-cols-2">
             <input placeholder="Course Code*" value={form.course_code} onChange={e => setForm(p => ({ ...p, course_code: e.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <input placeholder="Course Name*" value={form.course_name} onChange={e => setForm(p => ({ ...p, course_name: e.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
           </div>
           <div className="flex gap-2">
-            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
             </button>
             <button onClick={() => setEditing(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">

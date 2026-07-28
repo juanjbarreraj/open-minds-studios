@@ -74,8 +74,8 @@ export default function TutorCourseManager() {
       {msg && <div className="rounded-xl bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
 
       {/* Assign form */}
-      <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-3">
-        <div className="text-sm font-semibold text-indigo-700">Assign Course to Tutor</div>
+      <div className="rounded-2xl border border-brand-blue/15 bg-brand-blue/10 p-5 space-y-3">
+        <div className="text-sm font-semibold text-brand-blue-deep">Assign Course to Tutor</div>
         <div className="flex flex-wrap gap-3">
           <select value={selectedTutor} onChange={e => setSelectedTutor(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm flex-1 min-w-[160px]">
             <option value="">Select Tutor…</option>
@@ -85,7 +85,7 @@ export default function TutorCourseManager() {
             <option value="">Select Course…</option>
             {courses.map(c => <option key={c.id} value={c.id}>{c.course_code} - {c.course_name}</option>)}
           </select>
-          <button onClick={handleAssign} disabled={saving || !selectedTutor || !selectedCourse} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+          <button onClick={handleAssign} disabled={saving || !selectedTutor || !selectedCourse} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep disabled:opacity-50">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Assign
           </button>
         </div>
@@ -104,9 +104,9 @@ export default function TutorCourseManager() {
                 {assignments.map(tc => {
                   const c = courses.find(c => c.id === tc.course_id);
                   return (
-                    <span key={tc.id} className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
+                    <span key={tc.id} className="inline-flex items-center gap-2 rounded-full bg-brand-blue/10 px-3 py-1 text-xs font-medium text-brand-blue-deep">
                       {c ? `${c.course_code} - ${c.course_name}` : tc.course_id}
-                      <button onClick={() => handleDelete(tc.id)} className="text-indigo-300 hover:text-red-500">
+                      <button onClick={() => handleDelete(tc.id)} className="text-slate-400 hover:text-red-500">
                         <Trash2 className="h-3 w-3" />
                       </button>
                     </span>

@@ -101,25 +101,25 @@ export default function InvitationManager() {
       {msg && <div className="rounded-xl bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
 
       {issued && (
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 space-y-3">
-          <div className="text-sm font-semibold text-indigo-800">Invitation link created</div>
-          <p className="text-xs text-indigo-600">
+        <div className="rounded-2xl border border-brand-blue/25 bg-brand-blue/10 p-5 space-y-3">
+          <div className="text-sm font-semibold text-brand-blue-deep">Invitation link created</div>
+          <p className="text-xs text-brand-blue">
             This link is shown once. Copy it now and pass it to the person directly. It expires on {formatDate(issued.expires_at)} and works a single time.
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <code className="flex-1 min-w-0 truncate rounded-xl bg-white border border-indigo-200 px-3 py-2 text-xs text-slate-700">
+            <code className="flex-1 min-w-0 truncate rounded-xl bg-white border border-brand-blue/25 px-3 py-2 text-xs text-slate-700">
               {issued.url}
             </code>
             <button
               onClick={copyLink}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep"
             >
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               {copied ? 'Copied' : 'Copy'}
             </button>
             <button
               onClick={() => setIssued(null)}
-              className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm text-indigo-700"
+              className="rounded-xl border border-brand-blue/25 bg-white px-4 py-2 text-sm text-brand-blue-deep"
             >
               Done
             </button>
@@ -133,15 +133,15 @@ export default function InvitationManager() {
         </p>
         <button
           onClick={() => setCreating(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep"
         >
           <Plus className="h-4 w-4" /> New Invitation
         </button>
       </div>
 
       {creating && (
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-3">
-          <div className="text-sm font-semibold text-indigo-700">New Invitation</div>
+        <div className="rounded-2xl border border-brand-blue/15 bg-brand-blue/10 p-5 space-y-3">
+          <div className="text-sm font-semibold text-brand-blue-deep">New Invitation</div>
           <div className="grid gap-3 sm:grid-cols-3">
             <select
               value={form.profile_type}
@@ -173,14 +173,14 @@ export default function InvitationManager() {
               placeholder="Expires in days"
             />
           </div>
-          <p className="text-xs text-indigo-500">
+          <p className="text-xs text-brand-blue">
             Manager and super admin profiles cannot be invited. A super admin links those accounts directly.
           </p>
           <div className="flex gap-2">
             <button
               onClick={create}
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep disabled:opacity-60"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Create link
             </button>

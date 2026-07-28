@@ -92,17 +92,17 @@ export default function TutorManager({ isSuperAdmin }) {
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tutors..." className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-indigo-300" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tutors..." className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-brand-blue/50" />
         </div>
-        <button onClick={startNew} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+        <button onClick={startNew} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep">
           <Plus className="h-4 w-4" /> Add Tutor
         </button>
       </div>
 
       {/* Form */}
       {editing && (
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-4">
-          <div className="text-sm font-semibold text-indigo-700">{editing === 'new' ? 'New Tutor' : 'Edit Tutor'}</div>
+        <div className="rounded-2xl border border-brand-blue/15 bg-brand-blue/10 p-5 space-y-4">
+          <div className="text-sm font-semibold text-brand-blue-deep">{editing === 'new' ? 'New Tutor' : 'Edit Tutor'}</div>
           <div className="grid gap-3 sm:grid-cols-2">
             <input placeholder="Full Name*" value={form.full_name} onChange={e => f('full_name', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <input placeholder="Email*" value={form.email} onChange={e => f('email', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
@@ -147,7 +147,7 @@ export default function TutorManager({ isSuperAdmin }) {
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
             </button>
             <button onClick={cancel} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">
@@ -194,7 +194,7 @@ export default function TutorManager({ isSuperAdmin }) {
                   <td className="px-4 py-3 text-slate-500">{t.phone || '-'}</td>
                   <td className="px-4 py-3 text-center">{t.approved ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">Yes</span> : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">No</span>}</td>
                   <td className="px-4 py-3 text-center">{t.can_access_manager_dashboard ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">Yes</span> : '-'}</td>
-                  <td className="px-4 py-3 text-center">{t.is_super_admin ? <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">Yes</span> : '-'}</td>
+                  <td className="px-4 py-3 text-center">{t.is_super_admin ? <span className="rounded-full bg-brand-amber/20 px-2 py-0.5 text-xs text-brand-amber-deep">Yes</span> : '-'}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>

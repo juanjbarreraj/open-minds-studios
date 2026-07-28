@@ -93,14 +93,14 @@ export default function AvailabilityAdminManager() {
             {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
-        <button onClick={() => { setEditing('new'); setForm({ ...empty }); }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+        <button onClick={() => { setEditing('new'); setForm({ ...empty }); }} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep">
           <Plus className="h-4 w-4" /> Add Slot
         </button>
       </div>
 
       {editing && (
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-3">
-          <div className="text-sm font-semibold text-indigo-700">{editing === 'new' ? 'New Slot' : 'Edit Slot'}</div>
+        <div className="rounded-2xl border border-brand-blue/15 bg-brand-blue/10 p-5 space-y-3">
+          <div className="text-sm font-semibold text-brand-blue-deep">{editing === 'new' ? 'New Slot' : 'Edit Slot'}</div>
           <div className="grid gap-3 sm:grid-cols-2">
             <select value={form.tutor_id} onChange={e => f('tutor_id', e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
               <option value="">Select Tutor…</option>
@@ -116,7 +116,7 @@ export default function AvailabilityAdminManager() {
             <input type="checkbox" checked={!!form.is_active} onChange={e => f('is_active', e.target.checked)} className="rounded" /> Active
           </label>
           <div className="flex gap-2">
-            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+            <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
             </button>
             <button onClick={() => setEditing(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"><X className="h-4 w-4" /></button>

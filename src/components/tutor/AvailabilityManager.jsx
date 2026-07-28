@@ -94,7 +94,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
                   <input type="time" value={editForm.start_time} onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm" />
                   <span className="text-slate-400">–</span>
                   <input type="time" value={editForm.end_time} onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm" />
-                  <button onClick={() => handleEdit(slot.id)} disabled={saving} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+                  <button onClick={() => handleEdit(slot.id)} disabled={saving} className="rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-blue-deep">
                     <Check className="h-3.5 w-3.5" />
                   </button>
                   <button onClick={() => { setEditingId(null); setError(''); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50">
@@ -105,7 +105,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
                 <div key={slot.id} className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm ${slot.is_active ? 'bg-slate-50' : 'bg-slate-100 opacity-60'}`}>
                   <span className="font-medium text-slate-700">{slot.start_time} – {slot.end_time}</span>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => handleToggle(slot)} title={slot.is_active ? 'Deactivate' : 'Activate'} className="text-slate-400 hover:text-indigo-500">
+                    <button onClick={() => handleToggle(slot)} title={slot.is_active ? 'Deactivate' : 'Activate'} className="text-slate-400 hover:text-brand-blue">
                       {slot.is_active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
                     </button>
                     <button onClick={() => { setEditingId(slot.id); setEditForm({ day_of_week: slot.day_of_week, start_time: slot.start_time, end_time: slot.end_time, is_active: slot.is_active }); setError(''); }} className="text-slate-400 hover:text-slate-700">
@@ -125,7 +125,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
               <input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm" />
               <span className="text-slate-400">–</span>
               <input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm" />
-              <button onClick={handleAdd} disabled={saving} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+              <button onClick={handleAdd} disabled={saving} className="rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-blue-deep">
                 {saving ? 'Saving…' : 'Save'}
               </button>
               <button onClick={() => { setAdding(false); setError(''); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50">
@@ -133,7 +133,7 @@ export default function AvailabilityManager({ slots, tutorId, onRefresh }) {
               </button>
             </div>
           ) : (
-            <button onClick={() => { setAdding(true); setForm({ ...emptySlot, day_of_week: day }); }} className="mt-2 inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs text-slate-500 transition hover:border-indigo-400 hover:text-indigo-500">
+            <button onClick={() => { setAdding(true); setForm({ ...emptySlot, day_of_week: day }); }} className="mt-2 inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs text-slate-500 transition hover:border-brand-blue/50 hover:text-brand-blue">
               <Plus className="h-3 w-3" /> Add slot
             </button>
           )}

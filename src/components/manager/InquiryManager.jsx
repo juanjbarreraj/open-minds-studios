@@ -78,7 +78,7 @@ export default function InquiryManager() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search inquiries..."
-            className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-indigo-300"
+            className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-sm outline-none focus:border-brand-blue/50"
           />
         </div>
         <select
@@ -107,8 +107,8 @@ export default function InquiryManager() {
                   onClick={() => setExpandedId(isExpanded ? null : inq.id)}
                   className="w-full flex flex-wrap items-center gap-3 px-5 py-4 text-left hover:bg-slate-50 transition rounded-2xl"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50">
-                    <Mail className="h-4 w-4 text-indigo-500" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-blue/10">
+                    <Mail className="h-4 w-4 text-brand-blue" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-slate-800 truncate">{inq.parent_name}</div>
@@ -160,9 +160,9 @@ export default function InquiryManager() {
                     )}
 
                     {editing === inq.id ? (
-                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 space-y-3">
+                      <div className="rounded-2xl border border-brand-blue/15 bg-brand-blue/10 p-4 space-y-3">
                         <div className="flex flex-wrap items-center gap-3">
-                          <label className="text-xs font-semibold text-indigo-700">Status</label>
+                          <label className="text-xs font-semibold text-brand-blue-deep">Status</label>
                           <select
                             value={editForm.status}
                             onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
@@ -181,7 +181,7 @@ export default function InquiryManager() {
                           <button
                             onClick={save}
                             disabled={saving}
-                            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-xl bg-brand-blue px-4 py-2 text-sm font-semibold text-white hover:bg-brand-blue-deep disabled:opacity-60"
                           >
                             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
                           </button>

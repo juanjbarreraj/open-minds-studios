@@ -38,8 +38,12 @@ const SIZES = {
   lg: 'min-h-[52px] px-7 py-3 text-base gap-2.5 rounded-2xl',
 };
 
-const ActionButton = React.forwardRef(function ActionButton(
-  {
+/** @type {any} */
+const ActionButton = React.forwardRef(function ActionButton(props, ref) {
+  // Destructured in the body rather than the signature: under checkJs,
+  // forwardRef's inference collapses a fully-defaulted parameter pattern to
+  // an empty object type.
+  const {
     variant = 'primary',
     size = 'md',
     loading = false,
@@ -50,10 +54,8 @@ const ActionButton = React.forwardRef(function ActionButton(
     children = null,
     disabled = false,
     as: Component = 'button',
-    ...props
-  },
-  ref
-) {
+    ...rest
+  } = /** @type {any} */ (props);
   const m = useMotion();
   const isDisabled = disabled || loading;
   const MotionComponent = React.useMemo(() => motion.create(Component), [Component]);
@@ -75,7 +77,7 @@ const ActionButton = React.forwardRef(function ActionButton(
         SIZES[size],
         className
       )}
-      {...props}
+      {...rest}
     >
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

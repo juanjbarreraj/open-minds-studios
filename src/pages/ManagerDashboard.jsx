@@ -38,7 +38,7 @@ export default function ManagerDashboard() {
 
   if (isLoadingAuth) return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+      <Loader2 className="h-8 w-8 animate-spin text-brand-blue" />
     </div>
   );
 
@@ -46,7 +46,7 @@ export default function ManagerDashboard() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6 text-center gap-4">
       <ShieldX className="h-12 w-12 text-slate-300" />
       <h1 className="text-xl font-bold text-slate-800">Authentication Required</h1>
-      <button onClick={() => setShowAuthModal(true)} className="rounded-2xl bg-indigo-600 px-8 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Sign In</button>
+      <button onClick={() => setShowAuthModal(true)} className="rounded-2xl bg-brand-blue px-8 py-3 text-sm font-semibold text-white hover:bg-brand-blue-deep">Sign In</button>
       {showAuthModal && <AuthModal type="tutor" onClose={() => setShowAuthModal(false)} />}
     </div>
   );
@@ -87,7 +87,7 @@ export default function ManagerDashboard() {
         <div className="flex flex-col border-b border-slate-100 px-5 py-4">
           <SiteLogo className="mb-3" />
           <div className="flex items-center gap-2">
-            <LayoutDashboard className="h-5 w-5 text-indigo-500" />
+            <LayoutDashboard className="h-5 w-5 text-brand-blue" />
             <div>
               <div className="text-sm font-bold text-slate-800">Manager Dashboard</div>
               <div className="text-xs text-slate-400">Internal Data Management</div>
@@ -99,7 +99,7 @@ export default function ManagerDashboard() {
             <button
               key={id}
               onClick={() => { setActiveTab(id); setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === id ? 'bg-brand-blue/10 text-brand-blue-deep' : 'text-slate-600 hover:bg-slate-50'}`}
             >
               <Icon className="h-4 w-4" />
               {label}
@@ -128,7 +128,7 @@ export default function ManagerDashboard() {
             </button>
             <div>
               <span className="font-semibold text-slate-800">{[...TABS, ...SUPER_ADMIN_TABS].find(t => t.id === activeTab)?.label}</span>
-              {isSuperAdmin && <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700">Super Admin</span>}
+              {isSuperAdmin && <span className="ml-2 rounded-full bg-brand-amber/20 px-2 py-0.5 text-xs font-semibold text-brand-amber-deep">Super Admin</span>}
             </div>
           </div>
           <div className="text-sm text-slate-500 hidden sm:block">{tutor?.full_name || user.full_name}</div>

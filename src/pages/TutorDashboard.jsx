@@ -60,7 +60,7 @@ export default function TutorDashboard() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-brand-blue" />
       </div>
     );
   }
@@ -68,12 +68,12 @@ export default function TutorDashboard() {
   if (status === 'no-auth') {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6 text-center">
-        <LayoutDashboard className="mb-4 h-10 w-10 text-indigo-400" />
+        <LayoutDashboard className="mb-4 h-10 w-10 text-brand-blue/70" />
         <h1 className="text-2xl font-bold text-slate-800">Tutor Dashboard</h1>
         <p className="mt-2 text-slate-500">Please sign in to access your dashboard.</p>
         <button
           onClick={() => setShowAuthModal(true)}
-          className="mt-6 rounded-2xl bg-indigo-600 px-8 py-3 text-sm font-semibold text-white shadow transition hover:bg-indigo-700"
+          className="mt-6 rounded-2xl bg-brand-blue px-8 py-3 text-sm font-semibold text-white shadow transition hover:bg-brand-blue-deep"
         >
           Sign In
         </button>
@@ -130,7 +130,7 @@ export default function TutorDashboard() {
             {(tutor?.can_access_manager_dashboard || tutor?.is_super_admin) && (
               <Link
                 to="/manager-dashboard"
-                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                className="inline-flex items-center gap-2 rounded-xl border border-brand-blue/25 bg-brand-blue/10 px-4 py-2 text-sm font-semibold text-brand-blue-deep transition hover:bg-brand-blue/15"
               >
                 <ShieldCheck className="h-4 w-4" /> Manager
               </Link>
@@ -157,9 +157,9 @@ export default function TutorDashboard() {
             {/* Appointments */}
             <section>
               <div className="mb-4 flex items-center gap-2">
-                <CalendarDays className="h-5 w-5 text-indigo-500" />
+                <CalendarDays className="h-5 w-5 text-brand-blue" />
                 <h2 className="text-xl font-bold text-slate-800">Upcoming Appointments</h2>
-                <span className="ml-auto rounded-full bg-indigo-50 px-3 py-0.5 text-xs font-semibold text-indigo-600">
+                <span className="ml-auto rounded-full bg-brand-blue/10 px-3 py-0.5 text-xs font-semibold text-brand-blue">
                   {bookings.length}
                 </span>
               </div>
@@ -169,7 +169,7 @@ export default function TutorDashboard() {
             {/* My Students */}
             <section>
               <div className="mb-4 flex items-center gap-2">
-                <Users className="h-5 w-5 text-indigo-500" />
+                <Users className="h-5 w-5 text-brand-blue" />
                 <h2 className="text-xl font-bold text-slate-800">My Students</h2>
               </div>
               <MyStudentsSection
@@ -181,7 +181,7 @@ export default function TutorDashboard() {
             {/* Module Review / Grading */}
             <section>
               <div className="mb-4 flex items-center gap-2">
-                <ClipboardList className="h-5 w-5 text-indigo-500" />
+                <ClipboardList className="h-5 w-5 text-brand-blue" />
                 <h2 className="text-xl font-bold text-slate-800">Module Submissions</h2>
               </div>
               <TutorModuleReview tutorId={tutor.id} />
@@ -190,7 +190,7 @@ export default function TutorDashboard() {
             {/* Availability */}
             <section>
               <div className="mb-4 flex items-center gap-2">
-                <Clock className="h-5 w-5 text-indigo-500" />
+                <Clock className="h-5 w-5 text-brand-blue" />
                 <h2 className="text-xl font-bold text-slate-800">Weekly Availability</h2>
               </div>
               <AvailabilityManager
