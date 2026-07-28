@@ -75,13 +75,17 @@ export function create(req, res) {
 
 const statusSchema = z.object({
   status: z.enum(['pending', 'confirmed', 'declined', 'cancelled', 'completed']),
+  // Required when a tutor cancels; the student is told why.
+  cancellation_reason: z.string().trim().max(1000).optional().default(''),
 });
 
 export function updateStatus(req, res) {
-  const { status } = statusSchema.parse(req.body);
+  const { status, cancellation_reason } = statusSchema.parse(req.body);
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) throw notFound('Booking not found');
 
+  // Identity comes from the session, never from the request body. A tutor may
+  // only act on their own appointments, a student only on their own.
   let actor;
   if (isManager(req)) {
     actor = 'manager';
@@ -96,12 +100,26 @@ export function updateStatus(req, res) {
     throw forbidden('You cannot modify this booking.');
   }
 
-  const updated = transitionBooking({ bookingId: booking.id, actor, nextStatus: status });
+  const updated = transitionBooking({
+    bookingId: booking.id,
+    actor,
+    nextStatus: status,
+    cancellationReason: cancellation_reason,
+  });
 
   const t = tutorFor(updated);
-  const eventByStatus = { confirmed: 'booking.confirmed', declined: 'booking.declined', cancelled: 'booking.cancelled' };
-  if (eventByStatus[status]) {
-    notifyBookingEvent(eventByStatus[status], updated, { tutorEmail: t?.email, tutorName: t?.full_name });
+  if (status === 'cancelled' && actor === 'tutor') {
+    // The student loses their session, so they are the one who needs telling.
+    notifyBookingEvent('booking.cancelled_by_tutor', updated, {
+      tutorEmail: t?.email,
+      tutorName: t?.full_name,
+      reason: cancellation_reason,
+    });
+  } else {
+    const eventByStatus = { confirmed: 'booking.confirmed', declined: 'booking.declined', cancelled: 'booking.cancelled' };
+    if (eventByStatus[status]) {
+      notifyBookingEvent(eventByStatus[status], updated, { tutorEmail: t?.email, tutorName: t?.full_name });
+    }
   }
   res.json(serializeRow(updated));
 }

@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import db from './database.js';
 import { runMigrations } from './migrate.js';
 import { newId } from '../lib/ids.js';
-import { todayInAppTz, nextDateForWeekday, addDays, weekdayName } from '../lib/time.js';
+import { todayInAppTz, nextDateForWeekday, addDays, weekdayName, appointmentInstants } from '../lib/time.js';
 
 export function runSeed() {
   runMigrations();
@@ -71,6 +71,15 @@ export function runSeed() {
     can_access_manager_dashboard: 1, is_super_admin: 1,
   });
 
+  // A profile a manager prepared for a family that has not registered yet.
+  // This is what an invitation link is for.
+  insertStudent.run({
+    id: newId(), user_id: null, first_name: 'Riley', last_name: 'Nguyen',
+    full_name: 'Riley Nguyen', email: 'riley.invite@demo.local', phone: '',
+    approved: 1, can_access_student_portal: 1,
+    notes: 'Demo profile awaiting an invitation link (local only).',
+  });
+
   const pendingUserId = newId();
   insertUser.run({
     id: pendingUserId, email: 'pending@demo.local', password_hash: hash('pending123'),
@@ -113,22 +122,27 @@ export function runSeed() {
   const insertBooking = db.prepare(`INSERT INTO bookings
     (id, tutor_id, student_id, student_first_name, student_last_name, student_email, student_phone,
      course_id, assignment_description, session_date, preferred_day, preferred_start_time, preferred_end_time,
-     slot_id, meeting_type, status)
+     slot_id, meeting_type, status, starts_at_utc, ends_at_utc)
     VALUES (@id, @tutor_id, @student_id, 'Alex', 'Rivera', 'student@demo.local', '555-0101',
      @course_id, @assignment_description, @session_date, @preferred_day, @start, @end,
-     @slot_id, @meeting_type, @status)`);
-  insertBooking.run({
+     @slot_id, @meeting_type, @status, @starts_at_utc, @ends_at_utc)`);
+  // Seeded bookings carry the same UTC instants a real booking would.
+  const withInstants = (row) => {
+    const i = appointmentInstants(row.session_date, row.start, 60);
+    return { ...row, starts_at_utc: i.ok ? i.startsAtUtc : null, ends_at_utc: i.ok ? i.endsAtUtc : null };
+  };
+  insertBooking.run(withInstants({
     id: newId(), tutor_id: tutorId, student_id: studentId, course_id: satMathId,
     assignment_description: 'Practice test review\n\nGo over sections 3 and 4 of the last practice SAT.',
     session_date: nextMonday, preferred_day: weekdayName(nextMonday), start: '10:00', end: '11:00',
     slot_id: mondaySlotId, meeting_type: 'Online', status: 'confirmed',
-  });
-  insertBooking.run({
+  }));
+  insertBooking.run(withInstants({
     id: newId(), tutor_id: tutorId, student_id: studentId, course_id: apCalcId,
     assignment_description: 'Derivatives homework\n\nChain rule practice problems from chapter 3.',
     session_date: nextWednesday, preferred_day: weekdayName(nextWednesday), start: '14:00', end: '15:00',
     slot_id: null, meeting_type: 'Online', status: 'pending',
-  });
+  }));
 
   // Sample module assigned to the demo student.
   db.prepare(`INSERT INTO modules (id, tutor_id, student_id, student_email, tutor_name, student_name, name, description, status)

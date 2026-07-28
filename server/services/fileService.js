@@ -78,16 +78,21 @@ export function recordUpload(file, userId) {
 }
 
 // Files are uploaded before the module that references them is created, so an
-// abandoned form leaves a row nothing points at. This removes those, never
-// touching a file any module still uses.
-export function removeOrphanFiles({ olderThanHours = 24 } = {}) {
+// abandoned form leaves a row nothing points at. A file attached to any module
+// is never an orphan and is never returned here.
+export function findOrphanFiles({ olderThanHours = 24 } = {}) {
   const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000).toISOString();
-  const orphans = db
+  return db
     .prepare(`SELECT * FROM files
       WHERE created_at < ?
       AND id NOT IN (SELECT file_id FROM modules WHERE file_id IS NOT NULL)
       AND id NOT IN (SELECT submission_file_id FROM modules WHERE submission_file_id IS NOT NULL)`)
     .all(cutoff);
+}
+
+// Removes those orphans, never touching a file any module still uses.
+export function removeOrphanFiles({ olderThanHours = 24 } = {}) {
+  const orphans = findOrphanFiles({ olderThanHours });
 
   let blobsRemoved = 0;
   for (const row of orphans) {

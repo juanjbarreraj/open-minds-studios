@@ -35,3 +35,7 @@ server/db/data/
 server/uploads/*
 !server/uploads/.gitkeep
 !.env.example
+
+# Local operational output (never commit databases, backups, or exports)
+server/backups/
+server/exports/

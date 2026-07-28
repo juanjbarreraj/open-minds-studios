@@ -19,16 +19,18 @@ const statusStyles = {
 };
 
 function AppointmentCard({ booking, course, onRefresh }) {
-  const [acting, setActing] = useState(null); // 'accept' | 'decline'
+  const [acting, setActing] = useState(null); // 'accept' | 'decline' | 'cancel'
   const [error, setError] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   // The card can be stale (the student may have cancelled since it loaded), so
   // a rejected transition has to release the buttons and explain itself.
-  const act = async (kind, status) => {
+  const act = async (kind, status, reason) => {
     setActing(kind);
     setError('');
     try {
-      await bookingsApi.updateStatus(booking.id, status);
+      await bookingsApi.updateStatus(booking.id, status, reason);
       onRefresh();
     } catch (err) {
       setError(err?.message || 'That change could not be saved. Refresh and try again.');
@@ -40,7 +42,16 @@ function AppointmentCard({ booking, course, onRefresh }) {
   const handleAccept = () => act('accept', 'confirmed');
   const handleDecline = () => act('decline', 'declined');
 
+  const handleCancel = () => {
+    if (!cancelReason.trim()) {
+      setError('Please give the student a reason for the cancellation.');
+      return;
+    }
+    act('cancel', 'cancelled', cancelReason.trim());
+  };
+
   const isPending = booking.status === 'pending';
+  const isConfirmed = booking.status === 'confirmed';
 
   return (
     <div className={`rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md ${isPending ? 'border-amber-200' : 'border-slate-200'}`}>
@@ -119,6 +130,51 @@ function AppointmentCard({ booking, course, onRefresh }) {
             {acting === 'decline' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
             {acting === 'decline' ? 'Declining...' : 'Decline'}
           </button>
+        </div>
+      )}
+
+      {/* A tutor who cannot attend releases the slot themselves, with a
+          reason the student is told. */}
+      {isConfirmed && (
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          {!cancelling ? (
+            <button
+              onClick={() => { setCancelling(true); setError(''); }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            >
+              <XCircle className="h-3.5 w-3.5" />
+              Cancel this session
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 space-y-3">
+              <p className="text-sm font-semibold text-red-700">Cancel this confirmed session?</p>
+              <p className="text-xs text-red-500">
+                The student is notified with your reason and the time becomes available again.
+              </p>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Reason for the student, for example: I am unwell and cannot attend."
+                className="w-full rounded-xl border border-red-200 px-3 py-2 text-sm min-h-[70px] outline-none focus:border-red-300"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCancel}
+                  disabled={acting === 'cancel'}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-60"
+                >
+                  {acting === 'cancel' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {acting === 'cancel' ? 'Cancelling...' : 'Confirm cancellation'}
+                </button>
+                <button
+                  onClick={() => { setCancelling(false); setCancelReason(''); setError(''); }}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Keep session
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

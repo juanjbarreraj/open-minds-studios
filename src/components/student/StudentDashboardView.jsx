@@ -142,9 +142,18 @@ export default function StudentDashboardView({ user, student }) {
                   <span className="font-medium text-slate-700">{getCourseName(b.course_id)}</span>
                   <span className="ml-2 text-slate-400">with {getTutorName(b.tutor_id)}</span>
                 </div>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-500">
-                  {bookingStatusLabel(b.status)}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-500">
+                    {bookingStatusLabel(b.status)}
+                  </span>
+                  {/* When a tutor releases a session the student should see
+                      who cancelled it and why. */}
+                  {b.status === 'cancelled' && b.cancelled_by === 'tutor' && (
+                    <span className="text-xs text-slate-400 text-right max-w-xs">
+                      Cancelled by your tutor{b.cancellation_reason ? `: ${b.cancellation_reason}` : ''}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>

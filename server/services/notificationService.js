@@ -104,7 +104,7 @@ The Open Minds Studios Team
   }
 }
 
-export function notifyBookingEvent(eventType, booking, { tutorEmail, tutorName } = {}) {
+export function notifyBookingEvent(eventType, booking, { tutorEmail, tutorName, reason } = {}) {
   const when = `${booking.preferred_day} ${booking.session_date}, ${booking.preferred_start_time} to ${booking.preferred_end_time} (Eastern Time)`;
   const studentName = `${booking.student_first_name} ${booking.student_last_name}`.trim() || booking.student_email;
 
@@ -128,6 +128,13 @@ export function notifyBookingEvent(eventType, booking, { tutorEmail, tutorName }
       recipient: tutorEmail,
       subject: `Appointment cancelled by ${studentName}`,
       body: `Hi ${tutorName || 'there'},\n\nThe session on ${when} was cancelled by the student. The slot is available again.`,
+    },
+    // The tutor released the session, so the student is the one who needs to
+    // know, and to know why.
+    'booking.cancelled_by_tutor': {
+      recipient: booking.student_email,
+      subject: 'Your appointment was cancelled',
+      body: `Hi ${studentName},\n\n${tutorName || 'Your tutor'} had to cancel the session on ${when}.\n\nReason given: ${reason || '(none provided)'}\n\nThat time is open again, and you can book another session from the scheduling page.`,
     },
   };
 

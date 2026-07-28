@@ -986,6 +986,416 @@ console.log('\n== Origin and upload hygiene ==');
     (await tutor.post('/maintenance/orphan-files', {})).status === 403);
 }
 
+console.log('\n== Appointment state machine ==');
+{
+  const { CANONICAL_TRANSITIONS } = await import('../services/bookingService.js');
+  const expectedAllowed = [
+    ['pending', 'confirmed'], ['pending', 'declined'], ['pending', 'cancelled'],
+    ['confirmed', 'cancelled'], ['confirmed', 'completed'],
+  ];
+  check('every expected transition is allowed',
+    expectedAllowed.every(([from, to]) => CANONICAL_TRANSITIONS[from].includes(to)),
+    expectedAllowed.filter(([f, t]) => !CANONICAL_TRANSITIONS[f].includes(t)).join(' '));
+
+  const expectedRejected = [
+    ['declined', 'confirmed'], ['cancelled', 'pending'], ['completed', 'confirmed'],
+    ['completed', 'cancelled'], ['declined', 'pending'], ['cancelled', 'confirmed'],
+  ];
+  check('every invalid transition is rejected',
+    expectedRejected.every(([from, to]) => !CANONICAL_TRANSITIONS[from].includes(to)),
+    expectedRejected.filter(([f, t]) => CANONICAL_TRANSITIONS[f].includes(t)).join(' '));
+  check('declined, cancelled, and completed are terminal',
+    CANONICAL_TRANSITIONS.declined.length === 0 &&
+    CANONICAL_TRANSITIONS.cancelled.length === 0 &&
+    CANONICAL_TRANSITIONS.completed.length === 0);
+
+  // Exercised over the API, not only the table.
+  const stateMonday = nextDateForWeekday(addDays(monday, 14), 'Monday');
+  const mk = async (start) => (await student.post('/bookings', {
+    tutor_id: tutorId, session_date: stateMonday, preferred_start_time: start,
+  })).data;
+
+  const declinedBooking = await mk('09:00');
+  await tutor.patch(`/bookings/${declinedBooking.id}/status`, { status: 'declined' });
+  check('a declined booking cannot be confirmed by a manager',
+    (await manager.patch(`/bookings/${declinedBooking.id}`, { status: 'confirmed' })).status === 400);
+
+  const cancelledBooking = await mk('10:00');
+  await student.patch(`/bookings/${cancelledBooking.id}/status`, { status: 'cancelled' });
+  check('a cancelled booking cannot return to pending',
+    (await manager.patch(`/bookings/${cancelledBooking.id}`, { status: 'pending' })).status === 400);
+
+  const completedBooking = await mk('11:00');
+  await tutor.patch(`/bookings/${completedBooking.id}/status`, { status: 'confirmed' });
+  await tutor.patch(`/bookings/${completedBooking.id}/status`, { status: 'completed' });
+  check('a completed booking cannot be confirmed',
+    (await manager.patch(`/bookings/${completedBooking.id}`, { status: 'confirmed' })).status === 400);
+  check('a completed booking cannot be cancelled',
+    (await manager.patch(`/bookings/${completedBooking.id}`, { status: 'cancelled' })).status === 400);
+
+  const forced = await manager.post(`/bookings/${completedBooking.id}/override-status`, {
+    status: 'confirmed', reason: 'Marked completed by mistake during the state machine test.',
+  });
+  check('a super admin override still reaches a terminal booking',
+    forced.status === 200 && forced.data.status === 'confirmed');
+}
+
+console.log('\n== Tutor cancellation ==');
+{
+  const cancelMonday = nextDateForWeekday(addDays(monday, 21), 'Monday');
+  const booked = await student.post('/bookings', {
+    tutor_id: tutorId, session_date: cancelMonday, preferred_start_time: '09:00',
+  });
+  check('student books a session for the tutor to cancel', booked.status === 201);
+  await tutor.patch(`/bookings/${booked.data.id}/status`, { status: 'confirmed' });
+
+  const noReason = await tutor.patch(`/bookings/${booked.data.id}/status`, { status: 'cancelled' });
+  check('a cancellation reason is required', noReason.status === 400);
+
+  const outboxBefore = db.prepare("SELECT COUNT(*) AS n FROM notification_outbox WHERE event_type = 'booking.cancelled_by_tutor'").get().n;
+
+  const cancelled = await tutor.patch(`/bookings/${booked.data.id}/status`, {
+    status: 'cancelled', cancellation_reason: 'I am unwell and cannot attend this session.',
+  });
+  check('tutor cancels their own future confirmed appointment',
+    cancelled.status === 200 && cancelled.data.status === 'cancelled');
+  check('the cancellation records who cancelled it', cancelled.data.cancelled_by === 'tutor');
+  check('the cancellation records the reason',
+    cancelled.data.cancellation_reason.includes('unwell'));
+  check('the cancellation is timestamped', Boolean(cancelled.data.cancelled_at));
+
+  const outboxAfter = db.prepare("SELECT * FROM notification_outbox WHERE event_type = 'booking.cancelled_by_tutor' ORDER BY created_at DESC").all();
+  check('a notification outbox entry is created for the student',
+    outboxAfter.length === outboxBefore + 1 && outboxAfter[0].recipient === 'student@demo.local');
+  check('the outbox message carries the reason', outboxAfter[0].body.includes('unwell'));
+
+  const freed = await second.post('/bookings', {
+    tutor_id: tutorId, session_date: cancelMonday, preferred_start_time: '09:00',
+  });
+  check('the freed slot becomes available again', freed.status === 201);
+
+  // The booking survives for manager history.
+  const inHistory = (await manager.get('/bookings')).data.find((b) => b.id === booked.data.id);
+  check('the cancelled booking is preserved for manager history',
+    Boolean(inHistory) && inHistory.status === 'cancelled' && inHistory.cancelled_by === 'tutor');
+
+  // An unrelated tutor cannot touch it.
+  const otherTutorClient = client();
+  const otherProfile = await manager.post('/tutors', {
+    full_name: 'Unrelated Tutor', email: 'unrelated@demo.local', approved: true,
+  });
+  await otherTutorClient.post('/auth/register', {
+    email: 'unrelated@demo.local', password: 'unrelated-123', full_name: 'Unrelated Tutor', account_type: 'tutor',
+  });
+  await manager.post(`/tutors/${otherProfile.data.id}/link`, { link: true });
+  const otherBooking = await student.post('/bookings', {
+    tutor_id: tutorId, session_date: cancelMonday, preferred_start_time: '13:00',
+  });
+  await tutor.patch(`/bookings/${otherBooking.data.id}/status`, { status: 'confirmed' });
+  const foreign = await otherTutorClient.patch(`/bookings/${otherBooking.data.id}/status`, {
+    status: 'cancelled', cancellation_reason: 'Not my appointment at all.',
+  });
+  check('an unrelated tutor receives 403', foreign.status === 403);
+
+  // A completed session is not cancellable by the tutor.
+  await tutor.patch(`/bookings/${otherBooking.data.id}/status`, { status: 'completed' });
+  const completedCancel = await tutor.patch(`/bookings/${otherBooking.data.id}/status`, {
+    status: 'cancelled', cancellation_reason: 'Trying to cancel a finished session.',
+  });
+  check('a tutor cannot cancel a completed appointment', completedCancel.status === 400);
+
+  // A past appointment is not cancellable by the tutor either.
+  const pastId = newIdForTest();
+  db.prepare(`INSERT INTO bookings
+      (id, tutor_id, student_id, student_first_name, student_last_name, student_email,
+       course_id, assignment_description, session_date, preferred_day, preferred_start_time,
+       preferred_end_time, meeting_type, status, starts_at_utc, ends_at_utc)
+      VALUES (?, ?, NULL, 'Past', 'Session', 'student@demo.local', NULL, '', ?, ?, '09:00', '10:00',
+       'Online', 'confirmed', ?, ?)`)
+    .run(pastId, tutorId, addDays(today, -5), weekdayName(addDays(today, -5)),
+      new Date(Date.now() - 5 * 86400000).toISOString(), new Date(Date.now() - 5 * 86400000 + 3600000).toISOString());
+  const pastCancel = await tutor.patch(`/bookings/${pastId}/status`, {
+    status: 'cancelled', cancellation_reason: 'Trying to cancel a session that already happened.',
+  });
+  check('a tutor cannot cancel a past appointment', pastCancel.status === 400);
+}
+
+console.log('\n== Grade corrections ==');
+{
+  const students = await manager.get('/students');
+  const studentA = students.data.find((s) => s.email === 'student@demo.local');
+
+  const created = await tutor.post('/modules', {
+    student_id: studentA.id, student_email: studentA.email, name: 'Correction workflow module',
+  });
+  const moduleId = created.data.id;
+
+  const fd = new FormData();
+  fd.append('file', new Blob(['submission'], { type: 'text/plain' }), 'work.txt');
+  const uploaded = await student.post('/files', fd);
+  await student.post(`/modules/${moduleId}/submit`, { file_id: uploaded.data.id });
+  const firstGrade = await tutor.post(`/modules/${moduleId}/grade`, { grade: 'B', feedback: 'Solid work.' });
+  check('module is graded', firstGrade.status === 200 && firstGrade.data.grade === 'B');
+
+  const noReason = await tutor.post(`/modules/${moduleId}/grade-correction`, { grade: 'A' });
+  check('a correction reason is required', noReason.status === 400);
+
+  const corrected = await tutor.post(`/modules/${moduleId}/grade-correction`, {
+    grade: 'A', feedback: 'Rechecked question 4.', correction_reason: 'Question 4 was marked incorrectly.',
+  });
+  check('an authorized tutor can correct the grade',
+    corrected.status === 200 && corrected.data.grade === 'A');
+  check('the module carries the latest grade and feedback',
+    corrected.data.feedback === 'Rechecked question 4.');
+
+  const managerCorrection = await manager.post(`/modules/${moduleId}/grade-correction`, {
+    grade: 'A+', correction_reason: 'Manager review raised the mark.',
+  });
+  check('a manager can correct any grade', managerCorrection.status === 200 && managerCorrection.data.grade === 'A+');
+  check('omitting feedback keeps the previous feedback',
+    managerCorrection.data.feedback === 'Rechecked question 4.');
+
+  const studentAttempt = await student.post(`/modules/${moduleId}/grade-correction`, {
+    grade: 'A+++', correction_reason: 'Students must never be able to do this.',
+  });
+  check('a student cannot correct a grade', studentAttempt.status === 403);
+
+  const strangerTutor = client();
+  await strangerTutor.post('/auth/login', { email: 'unrelated@demo.local', password: 'unrelated-123' });
+  const strangerAttempt = await strangerTutor.post(`/modules/${moduleId}/grade-correction`, {
+    grade: 'F', correction_reason: 'This tutor did not assign this module.',
+  });
+  check('an unauthorized tutor cannot correct a grade', strangerAttempt.status === 403);
+
+  const history = await tutor.get(`/modules/${moduleId}/grade-revisions`);
+  check('history holds the original grade and both corrections', history.data.length === 3);
+  check('revisions are in chronological order',
+    history.data[0].new_grade === 'B' && history.data[1].new_grade === 'A' && history.data[2].new_grade === 'A+');
+  check('the original value is preserved',
+    history.data[1].previous_grade === 'B' && history.data[1].previous_feedback === 'Solid work.');
+  check('each correction records its reason and author',
+    history.data[1].correction_reason.includes('Question 4') && Boolean(history.data[1].changed_by_name));
+
+  const studentHistory = await student.get(`/modules/${moduleId}/grade-revisions`);
+  check('a student sees their own grade history', studentHistory.status === 200 && studentHistory.data.length === 3);
+  check('a student does not see internal correction reasons',
+    studentHistory.data.every((r) => r.correction_reason === undefined && r.changed_by_name === undefined));
+  check('a student sees that a grade was corrected', studentHistory.data[1].is_correction === true);
+
+  const strangerHistory = await second.get(`/modules/${moduleId}/grade-revisions`);
+  check('an unrelated student cannot read the history', strangerHistory.status === 403);
+}
+
+console.log('\n== Daylight saving handling ==');
+{
+  const {
+    resolveAppZoneInstant, appointmentInstants, formatInAppZone, DST_NONEXISTENT, addDays: addDaysTz, weekdayName: weekdayTz,
+  } = await import('../lib/time.js');
+
+  // A normal Eastern Time appointment.
+  const normal = appointmentInstants('2026-07-15', '10:00', 60);
+  check('a normal Eastern Time appointment resolves',
+    normal.ok && normal.startsAtUtc === '2026-07-15T14:00:00.000Z', JSON.stringify(normal));
+  check('it is stored in UTC and displays as Eastern Time',
+    formatInAppZone(normal.startsAtUtc, 'HH:mm') === '10:00');
+  check('a normal appointment is exactly 60 real minutes', normal.realMinutes === 60);
+
+  // Spring forward: 02:00 to 02:59 does not exist on 2026-03-08.
+  const nonexistent = resolveAppZoneInstant('2026-03-08', '02:00');
+  check('a nonexistent spring-forward time is rejected',
+    !nonexistent.ok && nonexistent.problem === DST_NONEXISTENT);
+  check('the hour before the gap is fine', resolveAppZoneInstant('2026-03-08', '01:00').ok);
+  check('the hour after the gap is fine', resolveAppZoneInstant('2026-03-08', '03:00').ok);
+
+  // Fall back: 01:00 happens twice on 2026-11-01.
+  const ambiguous = resolveAppZoneInstant('2026-11-01', '01:00');
+  check('a repeated fall-back hour is flagged as ambiguous', ambiguous.ok && ambiguous.ambiguous === true);
+  check('the repeated hour resolves deterministically to the first occurrence',
+    ambiguous.utc === '2026-11-01T05:00:00.000Z', ambiguous.utc);
+  check('a normal hour is not flagged ambiguous', resolveAppZoneInstant('2026-11-01', '03:00').ambiguous === false);
+
+  // A session that spans the spring transition still lasts 60 real minutes.
+  const acrossGap = appointmentInstants('2026-03-08', '01:00', 60);
+  check('an appointment across the spring transition is still 60 real minutes',
+    acrossGap.ok && acrossGap.realMinutes === 60, JSON.stringify(acrossGap));
+  check('its wall clock jumps over the missing hour', acrossGap.endWallClock === '03:00');
+
+  // Date navigation stays correct across both boundaries.
+  check('navigation across spring forward advances one calendar day',
+    addDaysTz('2026-03-07', 1) === '2026-03-08' && addDaysTz('2026-03-08', 1) === '2026-03-09');
+  check('navigation across fall back advances one calendar day',
+    addDaysTz('2026-10-31', 1) === '2026-11-01' && addDaysTz('2026-11-01', 1) === '2026-11-02');
+  check('seven-day navigation lands on the same weekday across a transition',
+    weekdayTz('2026-03-01') === weekdayTz(addDaysTz('2026-03-01', 7)) &&
+    weekdayTz('2026-10-25') === weekdayTz(addDaysTz('2026-10-25', 7)));
+
+  // A stored booking carries its UTC instants. The date stays inside the
+  // 30-day booking window.
+  const utcMonday = nextDateForWeekday(addDays(monday, 21), 'Monday');
+  const withInstants = await student.post('/bookings', {
+    tutor_id: tutorId, session_date: utcMonday, preferred_start_time: '14:00',
+  });
+  check('a new booking stores UTC instants',
+    withInstants.status === 201 && /Z$/.test(withInstants.data.starts_at_utc || ''),
+    `status=${withInstants.status} ${JSON.stringify(withInstants.data)?.slice(0, 160)}`);
+  check('the stored instant maps back to the Eastern Time start',
+    formatInAppZone(withInstants.data.starts_at_utc, 'HH:mm') === '14:00');
+}
+
+console.log('\n== Local invitations ==');
+{
+  // Student invitation, used successfully.
+  const studentProfile = await manager.post('/students', {
+    first_name: 'Invited', last_name: 'Family', email: 'invited-family@demo.local',
+    approved: true, can_access_student_portal: true,
+  });
+  const invite = await manager.post('/invitations', {
+    profile_type: 'student', profile_id: studentProfile.data.id,
+  });
+  check('manager creates a student invitation', invite.status === 201 && Boolean(invite.data.token));
+  check('the invitation returns a local registration path',
+    invite.data.invite_path === `/register?invite=${invite.data.token}`);
+
+  const stored = db.prepare('SELECT * FROM invitations WHERE id = ?').get(invite.data.id);
+  check('only a hash of the token is stored',
+    stored.token_hash !== invite.data.token && stored.token_hash.length === 64);
+
+  const listed = await manager.get('/invitations');
+  check('listings never expose the token or its hash',
+    listed.data.every((i) => i.token === undefined && i.token_hash === undefined));
+
+  const preview = await anon.get(`/invitations/preview?token=${invite.data.token}`);
+  check('the invitation preview works before registration',
+    preview.status === 200 && preview.data.intended_role === 'student_parent');
+
+  const invitedClient = client();
+  const accepted = await invitedClient.post('/auth/register', {
+    email: 'invited-family@demo.local', password: 'invited-family-1',
+    full_name: 'Invited Family', account_type: 'student', invite: invite.data.token,
+  });
+  check('registration through the invitation succeeds', accepted.status === 201);
+  check('the account is linked to the intended profile automatically',
+    accepted.data.student?.id === studentProfile.data.id);
+  check('the linked profile keeps its approved standing',
+    accepted.data.student?.approved === true && accepted.data.student?.can_access_student_portal === true);
+
+  const reuse = await client().post('/auth/register', {
+    email: 'someone-else@demo.local', password: 'someone-else-1',
+    full_name: 'Someone Else', account_type: 'student', invite: invite.data.token,
+  });
+  check('a used invitation cannot be reused', reuse.status === 400);
+
+  // Tutor invitation.
+  const tutorProfile = await manager.post('/tutors', {
+    full_name: 'Invited Tutor', email: 'invited-tutor@demo.local', approved: true,
+  });
+  const tutorInvite = await manager.post('/invitations', {
+    profile_type: 'tutor', profile_id: tutorProfile.data.id,
+  });
+  check('manager creates a tutor invitation', tutorInvite.status === 201);
+
+  const roleMismatch = await client().post('/auth/register', {
+    email: 'invited-tutor@demo.local', password: 'invited-tutor-1',
+    full_name: 'Invited Tutor', account_type: 'student', invite: tutorInvite.data.token,
+  });
+  check('an invitation cannot be used for the wrong account type', roleMismatch.status === 400);
+
+  const emailMismatch = await client().post('/auth/register', {
+    email: 'different-address@demo.local', password: 'different-1',
+    full_name: 'Different Person', account_type: 'tutor', invite: tutorInvite.data.token,
+  });
+  check('an invitation cannot be used with a different email', emailMismatch.status === 400);
+
+  const tutorClient = client();
+  const tutorAccepted = await tutorClient.post('/auth/register', {
+    email: 'invited-tutor@demo.local', password: 'invited-tutor-1',
+    full_name: 'Invited Tutor', account_type: 'tutor', invite: tutorInvite.data.token,
+  });
+  check('a tutor invitation links the tutor profile',
+    tutorAccepted.status === 201 && tutorAccepted.data.tutor?.id === tutorProfile.data.id);
+
+  // Altered token.
+  const altered = await client().post('/auth/register', {
+    email: 'altered@demo.local', password: 'altered-token-1', full_name: 'Altered Token',
+    account_type: 'student', invite: `${invite.data.token.slice(0, -4)}beef`,
+  });
+  check('an altered token is rejected', altered.status === 400);
+
+  // Revoked invitation.
+  const revokeProfile = await manager.post('/students', {
+    first_name: 'Revoked', last_name: 'Invite', email: 'revoked-invite@demo.local',
+  });
+  const toRevoke = await manager.post('/invitations', {
+    profile_type: 'student', profile_id: revokeProfile.data.id,
+  });
+  check('manager revokes an unused invitation',
+    (await manager.post(`/invitations/${toRevoke.data.id}/revoke`)).status === 200);
+  const revokedUse = await client().post('/auth/register', {
+    email: 'revoked-invite@demo.local', password: 'revoked-invite-1',
+    full_name: 'Revoked Invite', account_type: 'student', invite: toRevoke.data.token,
+  });
+  check('a revoked invitation cannot be used', revokedUse.status === 400);
+
+  // Expired invitation.
+  const expiredProfile = await manager.post('/students', {
+    first_name: 'Expired', last_name: 'Invite', email: 'expired-invite@demo.local',
+  });
+  const toExpire = await manager.post('/invitations', {
+    profile_type: 'student', profile_id: expiredProfile.data.id,
+  });
+  db.prepare('UPDATE invitations SET expires_at = ? WHERE id = ?')
+    .run(new Date(Date.now() - 1000).toISOString(), toExpire.data.id);
+  const expiredUse = await client().post('/auth/register', {
+    email: 'expired-invite@demo.local', password: 'expired-invite-1',
+    full_name: 'Expired Invite', account_type: 'student', invite: toExpire.data.token,
+  });
+  check('an expired invitation cannot be used', expiredUse.status === 400);
+
+  // Elevated profiles are never invitable.
+  const elevated = (await manager.get('/tutors')).data.find((t) => t.email === 'manager@demo.local');
+  const elevatedInvite = await manager.post('/invitations', {
+    profile_type: 'tutor', profile_id: elevated.id,
+  });
+  check('an invitation cannot grant manager or super admin access', elevatedInvite.status === 400 || elevatedInvite.status === 409);
+
+  const plainManagerProfile = await manager.post('/tutors', {
+    full_name: 'Invite Blocked Manager', email: 'invite-blocked@demo.local',
+    approved: true, can_access_manager_dashboard: true,
+  });
+  check('a manager-dashboard profile cannot be invited either',
+    (await manager.post('/invitations', { profile_type: 'tutor', profile_id: plainManagerProfile.data.id })).status === 400);
+
+  // Only managers issue invitations.
+  check('a student cannot create invitations',
+    (await student.post('/invitations', { profile_type: 'student', profile_id: studentProfile.data.id })).status === 403);
+  check('a tutor cannot list invitations', (await tutor.get('/invitations')).status === 403);
+}
+
+console.log('\n== Super admin tools ==');
+{
+  const orphanPreview = await manager.get('/maintenance/orphan-files?older_than_hours=0');
+  check('a super admin can preview unreferenced files',
+    orphanPreview.status === 200 && typeof orphanPreview.data.count === 'number' &&
+    typeof orphanPreview.data.total_bytes === 'number');
+  check('the preview lists file details', Array.isArray(orphanPreview.data.files));
+
+  check('a tutor cannot preview unreferenced files',
+    (await tutor.get('/maintenance/orphan-files')).status === 403);
+  check('a student cannot preview unreferenced files',
+    (await student.get('/maintenance/orphan-files')).status === 403);
+
+  const cleanup = await manager.post('/maintenance/orphan-files', { older_than_hours: 0 });
+  check('a super admin can run the cleanup', cleanup.status === 200);
+  const audit = db.prepare("SELECT * FROM admin_overrides WHERE action = 'files.orphan_cleanup' ORDER BY created_at DESC").all();
+  check('the cleanup is recorded with who ran it',
+    audit.length > 0 && audit[0].actor_email === 'manager@demo.local');
+
+  check('a tutor cannot override a booking status',
+    (await tutor.post('/bookings/any-id/override-status', {
+      status: 'confirmed', reason: 'Tutors must never be able to do this.',
+    })).status === 403);
+}
+
 console.log('\n== Logout ==');
 {
   const out = await student.post('/auth/logout');

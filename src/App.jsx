@@ -17,6 +17,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfService from './pages/TermsOfService.jsx';
 import PaymentPolicy from './pages/PaymentPolicy.jsx';
 import Guide from './pages/Guide.jsx';
+import Register from './pages/Register.jsx';
 import { Navigate } from 'react-router-dom';
 // Add page imports here
 
@@ -43,6 +44,7 @@ function App() {
             <Route path="/terms-of-service" element={<TermsOfService />} />
             <Route path="/payment-policy" element={<PaymentPolicy />} />
             <Route path="/guide" element={<Guide />} />
+            <Route path="/register" element={<Register />} />
             <Route path="*" element={<PageNotFound />} />
           </Routes>
         </Router>

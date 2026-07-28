@@ -127,19 +127,116 @@ const gradeSchema = z.object({
   feedback: z.string().max(8000).optional().default(''),
 });
 
+// Who may put a grade on this module: the tutor who assigned it, or a manager.
+function assertMayGrade(req, mod) {
+  const owns = (req.tutor && mod.tutor_id === req.tutor.id) || isManager(req);
+  if (!owns) throw forbidden('You can only grade modules you assigned.');
+}
+
 // Tutor grades a submitted module.
 export function gradeModule(req, res) {
   const mod = db.prepare('SELECT * FROM modules WHERE id = ?').get(req.params.id);
   if (!mod) throw notFound('Module not found');
-  const owns = (req.tutor && mod.tutor_id === req.tutor.id) || isManager(req);
-  if (!owns) throw forbidden('You can only grade modules you assigned.');
-  if (mod.status !== 'submitted') throw badRequest('Only submitted modules can be graded.');
+  assertMayGrade(req, mod);
+  if (mod.status !== 'submitted') {
+    if (mod.status === 'graded') {
+      throw badRequest('This module is already graded. Use the grade correction endpoint to change it.');
+    }
+    throw badRequest('Only submitted modules can be graded.');
+  }
 
   const data = gradeSchema.parse(req.body);
-  db.prepare(`UPDATE modules SET grade = @grade, feedback = @feedback, status = 'graded',
-      graded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = @id`)
-    .run({ id: mod.id, grade: data.grade, feedback: data.feedback });
+  const apply = db.transaction(() => {
+    db.prepare(`UPDATE modules SET grade = @grade, feedback = @feedback, status = 'graded',
+        graded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = @id`)
+      .run({ id: mod.id, grade: data.grade, feedback: data.feedback });
+    // The first grade is revision one, so the history is complete rather than
+    // starting only once someone makes a correction.
+    recordRevision(req, mod, {
+      previousGrade: null,
+      previousFeedback: null,
+      newGrade: data.grade,
+      newFeedback: data.feedback,
+      reason: 'Initial grade',
+    });
+  });
+  apply();
   res.json(serializeRow(db.prepare('SELECT * FROM modules WHERE id = ?').get(mod.id)));
+}
+
+const correctionSchema = z.object({
+  grade: z.string().trim().min(1).max(60),
+  feedback: z.string().max(8000).optional(),
+  correction_reason: z.string().trim().min(5, 'Explain why the grade is being corrected.').max(1000),
+});
+
+// A grade may be corrected, but the earlier value is never destroyed: the
+// module row carries the current grade and module_grade_revisions carries
+// every value it has ever had.
+export function correctGrade(req, res) {
+  const mod = db.prepare('SELECT * FROM modules WHERE id = ?').get(req.params.id);
+  if (!mod) throw notFound('Module not found');
+  assertMayGrade(req, mod);
+  if (mod.status !== 'graded') throw badRequest('Only a graded module can have its grade corrected.');
+
+  const data = correctionSchema.parse(req.body);
+  const newFeedback = data.feedback === undefined ? mod.feedback || '' : data.feedback;
+
+  const apply = db.transaction(() => {
+    recordRevision(req, mod, {
+      previousGrade: mod.grade,
+      previousFeedback: mod.feedback,
+      newGrade: data.grade,
+      newFeedback,
+      reason: data.correction_reason,
+    });
+    db.prepare(`UPDATE modules SET grade = @grade, feedback = @feedback,
+        graded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = @id`)
+      .run({ id: mod.id, grade: data.grade, feedback: newFeedback });
+  });
+  apply();
+  res.json(serializeRow(db.prepare('SELECT * FROM modules WHERE id = ?').get(mod.id)));
+}
+
+function recordRevision(req, mod, { previousGrade, previousFeedback, newGrade, newFeedback, reason }) {
+  db.prepare(`INSERT INTO module_grade_revisions
+      (id, module_id, previous_grade, new_grade, previous_feedback, new_feedback,
+       correction_reason, changed_by_user_id, changed_by_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(
+      newId(), mod.id, previousGrade, newGrade, previousFeedback, newFeedback,
+      reason, req.user.id, req.tutor?.full_name || req.user.full_name || ''
+    );
+}
+
+// Grade history. Staff see the full record including who changed what and
+// why; a student sees only that their grade changed and when, because the
+// correction reason is internal.
+export function listGradeRevisions(req, res) {
+  const mod = db.prepare('SELECT * FROM modules WHERE id = ?').get(req.params.id);
+  if (!mod) throw notFound('Module not found');
+
+  const isStaff = isManager(req) || (req.tutor && mod.tutor_id === req.tutor.id);
+  const isTheStudent = req.student &&
+    (mod.student_id === req.student.id || mod.student_email.toLowerCase() === req.student.email.toLowerCase());
+  if (!isStaff && !isTheStudent) throw forbidden('You do not have access to that module.');
+
+  const rows = db
+    .prepare('SELECT * FROM module_grade_revisions WHERE module_id = ? ORDER BY changed_at, rowid')
+    .all(mod.id);
+
+  if (isStaff) return res.json(serializeRows(rows));
+
+  return res.json(rows.map((r) => ({
+    id: r.id,
+    module_id: r.module_id,
+    new_grade: r.new_grade,
+    new_feedback: r.new_feedback,
+    changed_at: r.changed_at,
+    is_correction: r.previous_grade !== null,
+  })));
 }

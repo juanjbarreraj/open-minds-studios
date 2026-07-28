@@ -14,6 +14,7 @@ import * as modules from '../controllers/modulesController.js';
 import * as inquiries from '../controllers/inquiriesController.js';
 import * as files from '../controllers/filesController.js';
 import * as progress from '../controllers/progressController.js';
+import * as invitations from '../controllers/invitationsController.js';
 import { upload } from '../services/fileService.js';
 
 // Small helper so async controllers propagate errors to the error handler.
@@ -74,6 +75,8 @@ router.get('/modules', requirePortalAccess, h(modules.listModules));
 router.post('/modules', requireApprovedTutor, h(modules.createModule));
 router.post('/modules/:id/submit', requireApprovedStudent, h(modules.submitModule));
 router.post('/modules/:id/grade', requireApprovedTutor, h(modules.gradeModule));
+router.post('/modules/:id/grade-correction', requireApprovedTutor, h(modules.correctGrade));
+router.get('/modules/:id/grade-revisions', requirePortalAccess, h(modules.listGradeRevisions));
 
 // Files
 router.post('/files', requirePortalAccess, upload.single('file'), h(files.uploadFile));
@@ -95,7 +98,15 @@ router.post('/inquiries', inquiryLimiter, h(inquiries.createInquiry));
 router.get('/inquiries', requireManager, h(inquiries.listInquiries));
 router.patch('/inquiries/:id', requireManager, h(inquiries.updateInquiry));
 
-// Maintenance (super admin): remove upload blobs no module references.
+// Invitations: managers issue and revoke them; the preview is public so the
+// registration page can show who the link is for.
+router.get('/invitations/preview', h(invitations.previewInvitation));
+router.get('/invitations', requireManager, h(invitations.listInvitations));
+router.post('/invitations', requireManager, h(invitations.createInvitation));
+router.post('/invitations/:id/revoke', requireManager, h(invitations.revokeInvitation));
+
+// Maintenance (super admin): inspect and remove upload blobs no module references.
+router.get('/maintenance/orphan-files', requireSuperAdminRoute, h(files.previewOrphans));
 router.post('/maintenance/orphan-files', requireSuperAdminRoute, h(files.cleanupOrphans));
 
 router.get('/health', (req, res) => res.json({ ok: true }));

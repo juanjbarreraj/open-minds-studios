@@ -18,7 +18,15 @@ export const bookingsApi = {
   // Anonymized live bookings for the scheduling grid (is_own marks yours).
   busy: () => api.get('/bookings/busy'),
   create: (data) => api.post('/bookings', data),
-  updateStatus: (id, status) => api.patch(`/bookings/${id}/status`, { status }),
+  updateStatus: (id, status, cancellationReason) =>
+    api.patch(`/bookings/${id}/status`, {
+      status,
+      ...(cancellationReason ? { cancellation_reason: cancellationReason } : {}),
+    }),
+  // Super admin only: forces a status the normal lifecycle forbids, recorded
+  // in the audit table with the reason given.
+  overrideStatus: (id, status, reason) =>
+    api.post(`/bookings/${id}/override-status`, { status, reason }),
   managerUpdate: (id, data) => api.patch(`/bookings/${id}`, data),
   remove: (id) => api.delete(`/bookings/${id}`),
 };

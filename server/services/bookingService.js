@@ -12,6 +12,7 @@ import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import {
   todayInAppTz, nowTimeInAppTz, addDays, weekdayName, isValidDateString, isValidTimeString, timeToMinutes,
+  appointmentInstants, DST_NONEXISTENT,
 } from '../lib/time.js';
 import { badRequest, conflict, notFound } from '../middleware/errors.js';
 
@@ -106,11 +107,24 @@ export function validateBookingIsSchedulable({
 
   assertCourseTaughtByTutor(tutorId, courseId);
 
+  // Resolve the Eastern Time wall clock to a real instant. Two hours a year
+  // do not behave normally, and a booking must never be stored against a
+  // moment that does not exist or that happens twice without a decision.
+  const instants = appointmentInstants(sessionDate, startTime, APPOINTMENT_MINUTES);
+  if (!instants.ok) {
+    if (instants.problem === DST_NONEXISTENT) {
+      throw badRequest(
+        'That time does not exist on this date: clocks move forward for daylight saving. Pick a later start time.'
+      );
+    }
+    throw badRequest('A valid session date and start time are required.');
+  }
+
   const endTime = endTimeFor(startTime);
   assertNoTutorConflict({ tutorId, sessionDate, startTime, endTime, excludeBookingId });
   assertNoStudentConflict({ studentEmail, sessionDate, startTime, endTime, excludeBookingId });
 
-  return { tutor, slot, dayName, endTime };
+  return { tutor, slot, dayName, endTime, instants };
 }
 
 // Map a unique-index violation onto the rule it actually represents.
@@ -128,7 +142,7 @@ export function createBooking({ tutor, student, payload }) {
   const insert = db.transaction(() => {
     // Validated inside the transaction so a competing booking committed a
     // moment ago is visible to these checks.
-    const { slot, dayName, endTime } = validateBookingIsSchedulable({
+    const { slot, dayName, endTime, instants } = validateBookingIsSchedulable({
       tutorId: tutor.id,
       studentEmail: student.email,
       sessionDate: session_date,
@@ -140,10 +154,11 @@ export function createBooking({ tutor, student, payload }) {
     db.prepare(`INSERT INTO bookings
       (id, tutor_id, student_id, student_first_name, student_last_name, student_email, student_phone,
        course_id, assignment_description, session_date, preferred_day, preferred_start_time,
-       preferred_end_time, slot_id, meeting_type, status)
+       preferred_end_time, slot_id, meeting_type, status, starts_at_utc, ends_at_utc)
       VALUES (@id, @tutor_id, @student_id, @student_first_name, @student_last_name, @student_email,
        @student_phone, @course_id, @assignment_description, @session_date, @preferred_day,
-       @preferred_start_time, @preferred_end_time, @slot_id, @meeting_type, 'pending')`)
+       @preferred_start_time, @preferred_end_time, @slot_id, @meeting_type, 'pending',
+       @starts_at_utc, @ends_at_utc)`)
       .run({
         id,
         tutor_id: tutor.id,
@@ -160,6 +175,8 @@ export function createBooking({ tutor, student, payload }) {
         preferred_end_time: endTime,
         slot_id: slot.id,
         meeting_type: payload.meeting_type === 'In-Person' ? 'In-Person' : 'Online',
+        starts_at_utc: instants.startsAtUtc,
+        ends_at_utc: instants.endsAtUtc,
       });
     return id;
   });
@@ -175,59 +192,60 @@ export function createBooking({ tutor, student, payload }) {
 }
 
 // Allowed transitions per actor role.
-const TRANSITIONS = {
-  tutor: {
-    pending: ['confirmed', 'declined'],
-    confirmed: ['completed'],
-  },
+// The one place the appointment lifecycle is defined. Declined, cancelled,
+// and completed are terminal: a booking never comes back to life through the
+// normal flow, only through the audited super admin override.
+export const CANONICAL_TRANSITIONS = {
+  pending: ['confirmed', 'declined', 'cancelled'],
+  confirmed: ['cancelled', 'completed'],
+  declined: [],
+  cancelled: [],
+  completed: [],
+};
+
+// What each actor may do, always a subset of the canonical machine.
+const ACTOR_TRANSITIONS = {
   student: {
     pending: ['cancelled'],
     confirmed: ['cancelled'],
   },
-  // Managers resolve what the student and tutor flows cannot. Reviving a
-  // dead booking into a live status is allowed but revalidated against every
-  // scheduling rule; a completed session is history and is not revivable
-  // without an explicit super admin override.
-  manager: {
-    pending: ['confirmed', 'declined', 'cancelled', 'completed'],
-    confirmed: ['pending', 'declined', 'cancelled', 'completed'],
-    declined: ['pending', 'confirmed', 'cancelled'],
-    cancelled: ['pending', 'confirmed', 'declined'],
-    completed: [],
+  tutor: {
+    pending: ['confirmed', 'declined'],
+    // A tutor who cannot attend releases the slot themselves, with a reason.
+    confirmed: ['completed', 'cancelled'],
   },
+  manager: CANONICAL_TRANSITIONS,
 };
 
-const isRevival = (fromStatus, toStatus) =>
-  !LIVE_STATUSES.includes(fromStatus) && LIVE_STATUSES.includes(toStatus);
+const TERMINAL = ['declined', 'cancelled', 'completed'];
 
-export function transitionBooking({ bookingId, actor, nextStatus }) {
+export function transitionBooking({ bookingId, actor, nextStatus, cancellationReason = '', cancelledBy = null }) {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
   if (!booking) throw notFound('Booking not found');
 
-  const allowed = TRANSITIONS[actor]?.[booking.status] || [];
+  const allowed = ACTOR_TRANSITIONS[actor]?.[booking.status] || [];
   if (!allowed.includes(nextStatus)) {
-    if (booking.status === 'completed' && LIVE_STATUSES.includes(nextStatus)) {
+    if (TERMINAL.includes(booking.status) && CANONICAL_TRANSITIONS[booking.status].length === 0) {
       throw badRequest(
-        'A completed session cannot be reopened. A super admin can force it through the override endpoint with a reason.'
+        `A ${booking.status} appointment is final. A super admin can force a change through the override endpoint with a reason.`
       );
     }
     throw badRequest(`Cannot change a ${booking.status} booking to ${nextStatus}.`);
   }
 
-  const apply = db.transaction(() => {
-    // Bringing a booking back to life means it has to satisfy every rule a
-    // new booking would, not just the tutor slot check.
-    if (isRevival(booking.status, nextStatus)) {
-      validateBookingIsSchedulable({
-        tutorId: booking.tutor_id,
-        studentEmail: booking.student_email,
-        sessionDate: booking.session_date,
-        startTime: booking.preferred_start_time,
-        courseId: booking.course_id,
-        excludeBookingId: booking.id,
-      });
+  // A tutor may only release a session that has not happened yet; a session
+  // already in the past is either completed or a matter for a manager.
+  if (actor === 'tutor' && nextStatus === 'cancelled') {
+    if (!cancellationReason.trim()) {
+      throw badRequest('A reason is required when cancelling a confirmed session.');
     }
-    writeStatus(booking, nextStatus);
+    if (isInThePast(booking)) {
+      throw badRequest('That session has already started. Ask a manager to adjust it.');
+    }
+  }
+
+  const apply = db.transaction(() => {
+    writeStatus(booking, nextStatus, { cancellationReason, cancelledBy: cancelledBy || actorToCancelledBy(actor) });
   });
 
   try {
@@ -239,6 +257,19 @@ export function transitionBooking({ bookingId, actor, nextStatus }) {
   return db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
 }
 
+const actorToCancelledBy = (actor) =>
+  ({ student: 'student', tutor: 'tutor', manager: 'manager' }[actor] || null);
+
+// A booking is in the past once its start instant has passed. The stored UTC
+// instant is authoritative; older rows without one fall back to the Eastern
+// Time wall clock.
+export function isInThePast(booking) {
+  if (booking.starts_at_utc) return booking.starts_at_utc <= new Date().toISOString();
+  const today = todayInAppTz();
+  if (booking.session_date < today) return true;
+  return booking.session_date === today && booking.preferred_start_time <= nowTimeInAppTz();
+}
+
 // Deliberate, audited bypass of the scheduling rules. Reserved for super
 // admins; the database uniqueness guards still apply.
 export function overrideBookingStatus({ bookingId, nextStatus, actor, reason }) {
@@ -247,7 +278,7 @@ export function overrideBookingStatus({ bookingId, nextStatus, actor, reason }) 
   if (booking.status === nextStatus) throw badRequest(`That booking is already ${nextStatus}.`);
 
   const apply = db.transaction(() => {
-    writeStatus(booking, nextStatus);
+    writeStatus(booking, nextStatus, { cancellationReason: reason, cancelledBy: 'super_admin' });
     db.prepare(`INSERT INTO admin_overrides
         (id, actor_user_id, actor_email, action, target_type, target_id, reason, details)
         VALUES (?, ?, ?, 'booking.status_override', 'booking', ?, ?, ?)`)
@@ -266,16 +297,20 @@ export function overrideBookingStatus({ bookingId, nextStatus, actor, reason }) 
   return db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
 }
 
-function writeStatus(booking, nextStatus) {
+function writeStatus(booking, nextStatus, { cancellationReason = '', cancelledBy = null } = {}) {
   // Audit stamps: keep the first one recorded for a given outcome, and record
   // it whichever actor performed the change.
   const stamps = {};
   if (nextStatus === 'cancelled' && !booking.cancelled_at) stamps.cancelled_at = new Date().toISOString();
   if (nextStatus === 'declined' && !booking.declined_at) stamps.declined_at = new Date().toISOString();
 
+  const recordsCancellation = nextStatus === 'cancelled';
+
   db.prepare(`UPDATE bookings SET status = @status,
       cancelled_at = COALESCE(@cancelled_at, cancelled_at),
       declined_at = COALESCE(@declined_at, declined_at),
+      cancelled_by = COALESCE(@cancelled_by, cancelled_by),
+      cancellation_reason = COALESCE(@cancellation_reason, cancellation_reason),
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     WHERE id = @id`)
     .run({
@@ -283,5 +318,7 @@ function writeStatus(booking, nextStatus) {
       status: nextStatus,
       cancelled_at: stamps.cancelled_at || null,
       declined_at: stamps.declined_at || null,
+      cancelled_by: recordsCancellation ? cancelledBy : null,
+      cancellation_reason: recordsCancellation && cancellationReason ? cancellationReason.trim() : null,
     });
 }

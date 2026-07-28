@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { modulesApi } from '@/api/modulesApi';
 import { filesApi } from '@/api/filesApi';
 import { ClipboardList, ExternalLink, Loader2, CheckCircle } from 'lucide-react';
+import GradedModuleCard from './GradedModuleCard';
 
 function formatDate(iso) {
   if (!iso) return '-';
@@ -115,14 +116,21 @@ function GradeCard({ mod, onGraded }) {
 
 export default function TutorModuleReview({ tutorId }) {
   const [modules, setModules] = useState([]);
+  const [graded, setGraded] = useState([]);
+  const [tab, setTab] = useState('awaiting'); // 'awaiting' | 'graded'
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
   const load = async () => {
     try {
-      const mods = await modulesApi.list({ status: 'submitted' });
-      mods.sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
-      setModules(mods);
+      const [submitted, alreadyGraded] = await Promise.all([
+        modulesApi.list({ status: 'submitted' }),
+        modulesApi.list({ status: 'graded' }),
+      ]);
+      submitted.sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
+      alreadyGraded.sort((a, b) => new Date(b.graded_at || 0).getTime() - new Date(a.graded_at || 0).getTime());
+      setModules(submitted);
+      setGraded(alreadyGraded);
       setLoadError('');
     } catch (err) {
       setLoadError(err?.message || 'Submissions could not be loaded.');
@@ -145,19 +153,43 @@ export default function TutorModuleReview({ tutorId }) {
     </div>
   );
 
-  if (modules.length === 0) return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white py-12 text-center shadow-sm">
-      <ClipboardList className="mb-3 h-9 w-9 text-slate-300" />
-      <p className="text-sm font-medium text-slate-500">No submissions to grade</p>
-      <p className="mt-1 text-xs text-slate-400">Student submissions will appear here.</p>
-    </div>
-  );
+  const showing = tab === 'awaiting' ? modules : graded;
 
   return (
     <div className="space-y-4">
-      {modules.map(m => (
-        <GradeCard key={m.id} mod={m} onGraded={load} />
-      ))}
+      {/* Graded work stays reachable so a grade can be corrected. */}
+      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1 max-w-sm">
+        {[['awaiting', `Awaiting grading (${modules.length})`], ['graded', `Graded (${graded.length})`]].map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => setTab(value)}
+            className="rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200"
+            style={tab === value
+              ? { backgroundColor: 'white', color: 'rgb(58,154,202)', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }
+              : { color: 'rgb(100,116,139)' }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {showing.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white py-12 text-center shadow-sm">
+          <ClipboardList className="mb-3 h-9 w-9 text-slate-300" />
+          <p className="text-sm font-medium text-slate-500">
+            {tab === 'awaiting' ? 'No submissions to grade' : 'Nothing graded yet'}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            {tab === 'awaiting'
+              ? 'Student submissions will appear here.'
+              : 'Graded work appears here, where a grade can also be corrected.'}
+          </p>
+        </div>
+      ) : tab === 'awaiting' ? (
+        showing.map(m => <GradeCard key={m.id} mod={m} onGraded={load} />)
+      ) : (
+        showing.map(m => <GradedModuleCard key={m.id} mod={m} onCorrected={load} />)
+      )}
     </div>
   );
 }

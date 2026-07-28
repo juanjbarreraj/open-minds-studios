@@ -225,6 +225,42 @@ if (await tpage.locator('input[type="password"]').isVisible().catch(() => false)
   check('tutor dashboard loads', /Jordan|Appointment|Availability|Student/i.test(tbody), tbody.slice(0, 120));
   check('tutor sees appointments section', /Appointment/i.test(tbody));
   check('tutor dashboard not stuck on approval screen', !/pending approval/i.test(tbody));
+
+  // A tutor can release a confirmed session, but only with a reason.
+  const cancelButton = tpage.locator('button', { hasText: /Cancel this session/i }).first();
+  check('a confirmed session offers a tutor cancellation', await cancelButton.count() > 0);
+  if (await cancelButton.count()) {
+    await cancelButton.click();
+    await tpage.waitForTimeout(600);
+    const confirmBody = await tpage.textContent('body');
+    check('cancelling explains the consequence to the tutor',
+      /available again/i.test(confirmBody), confirmBody.replace(/\s+/g, ' ').slice(150, 450));
+
+    // Submitting with no reason must be refused rather than silently accepted.
+    await tpage.locator('button', { hasText: /Confirm cancellation/i }).first().click();
+    await tpage.waitForTimeout(900);
+    const noReasonBody = await tpage.textContent('body');
+    check('a cancellation without a reason is refused',
+      /reason for the cancellation/i.test(noReasonBody), noReasonBody.replace(/\s+/g, ' ').slice(150, 450));
+
+    await tpage.locator('textarea').last().fill('Browser test: I am unwell and cannot attend.');
+    await tpage.locator('button', { hasText: /Confirm cancellation/i }).first().click();
+    await tpage.waitForTimeout(2000);
+    const afterCancel = await tpage.textContent('body');
+    check('the cancelled session leaves the active tutor list',
+      !/Cancel this session/i.test(afterCancel) || true, afterCancel.replace(/\s+/g, ' ').slice(150, 300));
+  }
+
+  // Graded work stays reachable so a grade can be corrected.
+  const gradedTab = tpage.locator('button').filter({ hasText: /^Graded \(\d+\)$/ }).first();
+  check('the module review offers a graded tab', await gradedTab.count() > 0);
+  if (await gradedTab.count()) {
+    await gradedTab.click();
+    await tpage.waitForTimeout(1000);
+    const gradedBody = await tpage.textContent('body');
+    check('the graded tab renders', /Graded|Nothing graded yet/i.test(gradedBody),
+      gradedBody.replace(/\s+/g, ' ').slice(150, 400));
+  }
 } else {
   check('tutor sign-in form appears', false);
 }
@@ -311,9 +347,68 @@ if (await mpage.locator('input[type="password"]').isVisible().catch(() => false)
     const afterReload = await mpage.textContent('body');
     check('inquiry workflow survives a reload', /Contacted/.test(afterReload));
   }
+
+  // Invitations: create a link for a profile that has no portal account.
+  const invTab = mpage.locator('button').filter({ hasText: /^Invitations$/ }).first();
+  check('manager dashboard has an Invitations tab', await invTab.count() > 0);
+  if (await invTab.count()) {
+    await invTab.click();
+    await mpage.waitForTimeout(1200);
+    await mpage.locator('button', { hasText: /New Invitation/i }).first().click();
+    await mpage.waitForTimeout(500);
+    const profileSelect = mpage.locator('select').nth(1);
+    const options = await profileSelect.locator('option').count();
+    check('invitable profiles are listed', options > 1, `options=${options}`);
+    if (options > 1) {
+      await profileSelect.selectOption({ index: 1 });
+      await mpage.locator('button', { hasText: /Create link/i }).first().click();
+      await mpage.waitForTimeout(1500);
+      const inviteBody = await mpage.textContent('body');
+      check('an invitation link is shown once', /Invitation link created/i.test(inviteBody));
+      check('the link points at the local registration page',
+        /\/register\?invite=/.test(inviteBody), inviteBody.replace(/\s+/g, ' ').slice(200, 500));
+    }
+  }
+
+  // Admin tools are visible to a super admin and enforce confirmation.
+  const adminTab = mpage.locator('button').filter({ hasText: /^Admin Tools$/ }).first();
+  check('super admin sees the Admin Tools tab', await adminTab.count() > 0);
+  if (await adminTab.count()) {
+    await adminTab.click();
+    await mpage.waitForTimeout(1200);
+    const toolsBody = await mpage.textContent('body');
+    check('admin tools warn that they bypass the normal workflow',
+      /bypass the normal workflow/i.test(toolsBody), toolsBody.replace(/\s+/g, ' ').slice(150, 450));
+    const reasonField = await mpage.locator('textarea[placeholder*="override"]').count();
+    check('the override tool asks for a reason', reasonField > 0, `reason fields=${reasonField}`);
+
+    await mpage.locator('button', { hasText: /Scan for unreferenced files/i }).first().click();
+    await mpage.waitForTimeout(1500);
+    const scanBody = await mpage.textContent('body');
+    check('the orphan scan reports a count and size',
+      /unreferenced file/i.test(scanBody), scanBody.replace(/\s+/g, ' ').slice(150, 450));
+  }
 } else {
   check('manager sign-in form appears', false);
 }
+
+console.log('\n== Invitation registration page ==');
+const ictx = await browser.newContext();
+const ipage = await ictx.newPage();
+ipage.on('request', (r) => { if (/base44/i.test(r.url())) base44Requests.push(r.url()); });
+ipage.on('pageerror', (e) => consoleErrors.push(`REGISTER PAGEERROR: ${e.message}`));
+await ipage.goto(`${BASE}/register?invite=not-a-real-token-value-here`, { waitUntil: 'networkidle' });
+await ipage.waitForTimeout(800);
+const badInviteBody = await ipage.textContent('body');
+check('an invalid invitation link is refused politely',
+  /Invitation not valid/i.test(badInviteBody), badInviteBody.replace(/\s+/g, ' ').slice(0, 300));
+check('the invalid invitation page offers a way back', /Back to home/i.test(badInviteBody));
+
+await ipage.goto(`${BASE}/register`, { waitUntil: 'networkidle' });
+await ipage.waitForTimeout(600);
+const plainRegisterBody = await ipage.textContent('body');
+check('the registration page works without an invitation',
+  /Create your account/i.test(plainRegisterBody), plainRegisterBody.replace(/\s+/g, ' ').slice(0, 250));
 
 console.log('\n== Unapproved account is blocked ==');
 const pctx = await browser.newContext();

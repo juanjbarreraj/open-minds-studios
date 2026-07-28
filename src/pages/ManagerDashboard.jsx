@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
-import { Loader2, ShieldX, LayoutDashboard, Users, BookOpen, Link2, Clock, CalendarDays, Mail, LogOut, ArrowLeft } from 'lucide-react';
+import { Loader2, ShieldX, LayoutDashboard, Users, BookOpen, Link2, Clock, CalendarDays, Mail, Ticket, ShieldAlert, LogOut, ArrowLeft } from 'lucide-react';
 import SiteLogo from '../components/shared/SiteLogo';
 import AuthModal from '@/components/landing/AuthModal';
 import TutorManager from '../components/manager/TutorManager';
@@ -10,6 +10,8 @@ import AvailabilityAdminManager from '../components/manager/AvailabilityAdminMan
 import BookingManager from '../components/manager/BookingManager';
 import StudentManager from '../components/manager/StudentManager';
 import InquiryManager from '../components/manager/InquiryManager';
+import InvitationManager from '../components/manager/InvitationManager';
+import SuperAdminTools from '../components/manager/SuperAdminTools';
 import { Link } from 'react-router-dom';
 
 const TABS = [
@@ -20,6 +22,12 @@ const TABS = [
   { id: 'bookings', label: 'Bookings', icon: CalendarDays },
   { id: 'students', label: 'Students', icon: Users },
   { id: 'inquiries', label: 'Inquiries', icon: Mail },
+  { id: 'invitations', label: 'Invitations', icon: Ticket },
+];
+
+// Only super admins see these, because they step outside the normal workflow.
+const SUPER_ADMIN_TABS = [
+  { id: 'admin-tools', label: 'Admin Tools', icon: ShieldAlert },
 ];
 
 export default function ManagerDashboard() {
@@ -66,6 +74,10 @@ export default function ManagerDashboard() {
     bookings: BookingManager,
     students: StudentManager,
     inquiries: InquiryManager,
+    invitations: InvitationManager,
+    // Guarded again here so the panel cannot be reached by forcing the tab
+    // state; the API refuses non super admins regardless.
+    'admin-tools': isSuperAdmin ? SuperAdminTools : null,
   }[activeTab];
 
   return (
@@ -83,7 +95,7 @@ export default function ManagerDashboard() {
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {[...TABS, ...(isSuperAdmin ? SUPER_ADMIN_TABS : [])].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => { setActiveTab(id); setSidebarOpen(false); }}
@@ -115,7 +127,7 @@ export default function ManagerDashboard() {
               <LayoutDashboard className="h-4 w-4" />
             </button>
             <div>
-              <span className="font-semibold text-slate-800">{TABS.find(t => t.id === activeTab)?.label}</span>
+              <span className="font-semibold text-slate-800">{[...TABS, ...SUPER_ADMIN_TABS].find(t => t.id === activeTab)?.label}</span>
               {isSuperAdmin && <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700">Super Admin</span>}
             </div>
           </div>

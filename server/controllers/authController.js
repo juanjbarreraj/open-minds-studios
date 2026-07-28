@@ -5,6 +5,7 @@ import { newId, newSessionToken, hashToken } from '../lib/ids.js';
 import { serializeRow } from '../lib/serialize.js';
 import { SESSION_COOKIE, SESSION_TTL_MS, loadLinkedProfiles } from '../middleware/auth.js';
 import { cookieOptions, clearCookieOptions } from '../lib/config.js';
+import { findUsableInvitation, acceptInvitation } from './invitationsController.js';
 import { badRequest, unauthorized, conflict } from '../middleware/errors.js';
 
 const credentialsSchema = z.object({
@@ -18,6 +19,9 @@ const registerSchema = z.object({
   full_name: z.string().trim().min(1, 'Name is required').max(120),
   account_type: z.enum(['student', 'tutor']),
   phone: z.string().trim().max(40).optional().default(''),
+  // Optional invitation token; when present it links the new account to the
+  // profile a manager prepared, replacing the manual link step.
+  invite: z.string().trim().optional(),
 });
 
 function startSession(res, userId) {
@@ -53,12 +57,36 @@ export function register(req, res) {
   const existing = db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE').get(email);
   if (existing) throw conflict('An account with that email already exists. Try signing in instead.');
 
+  // An invitation proves a manager intended this person to hold this profile,
+  // which is what email verification would otherwise establish.
+  let invited = null;
+  if (data.invite) {
+    const result = findUsableInvitation(data.invite);
+    if (!result.ok) throw badRequest(result.reason);
+    const expectedRole = result.invitation.intended_role;
+    const requestedRole = data.account_type === 'tutor' ? 'tutor' : 'student_parent';
+    if (expectedRole !== requestedRole) {
+      throw badRequest('This invitation is for a different kind of account.');
+    }
+    if (result.invitation.email && result.invitation.email.toLowerCase() !== email) {
+      throw badRequest('This invitation was issued for a different email address.');
+    }
+    invited = result;
+  }
+
   const userId = newId();
   const role = data.account_type === 'tutor' ? 'tutor' : 'student_parent';
   const created = db.transaction(() => {
     db.prepare(`INSERT INTO users (id, email, password_hash, full_name, role, approved)
       VALUES (?, ?, ?, ?, ?, 0)`)
       .run(userId, email, bcrypt.hashSync(data.password, 10), data.full_name, role);
+
+    if (invited) {
+      // The manager already said which profile this is; adopt it and burn the
+      // invitation so the link cannot be reused.
+      acceptInvitation({ invitation: invited.invitation, userId });
+      return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    }
 
     const nameParts = data.full_name.split(' ');
     // A pre-created profile is adopted only when it carries no standing at
