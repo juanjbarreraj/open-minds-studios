@@ -141,6 +141,8 @@ and the confirmed defects were fixed. Grouped by what they affected:
 | The tutor's student roster dropped anyone whose only session was completed, making them unassignable | The roster counts confirmed and completed sessions. |
 | The Tutor form's Auth Provider dropdown discarded its value | Replaced with the portal-account link control described above. |
 | A duplicate `style` prop silently dropped the testimonial cards' glass treatment | Merged into one style object, restoring the intended design. |
+| The user guide still walked people through the removed hosted login, including "Continue to Sign In" and Google sign-in, neither of which exists now | Sign-in steps rewritten for the local email and password modal, including where approval fits. |
+| Seven em dashes remained in visible platform text, against the platform text rule | Replaced with commas or colons; no em dash remains anywhere in `src/` or `index.html`. |
 
 ## Verification summary
 

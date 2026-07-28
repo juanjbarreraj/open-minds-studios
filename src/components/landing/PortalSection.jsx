@@ -91,7 +91,7 @@ export default function PortalSection() {
               <TrendingUp className="h-4 w-4" style={{ color: 'rgb(246,178,59)' }} />
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Today's focus</div>
             </div>
-            <div className="text-base font-semibold text-slate-800">SAT Math — timing strategy and no-calculator drills</div>
+            <div className="text-base font-semibold text-slate-800">SAT Math: timing strategy and no-calculator drills</div>
             <div className="mt-3 h-2 rounded-full bg-white border border-slate-200">
               <div className="h-2 w-3/4 rounded-full transition-all duration-700" style={{ backgroundColor: 'rgb(98,191,161)' }} />
             </div>

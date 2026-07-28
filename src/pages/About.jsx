@@ -132,7 +132,7 @@ export default function About() {
           <motion.div className="mb-10 text-center" {...inView}>
             <div className="text-xs font-bold uppercase tracking-[0.2em] mb-2" style={{ color: 'rgb(246,178,59)' }}>Why Parents Stay</div>
             <h2 className="text-2xl font-bold text-slate-900 md:text-3xl">What makes Open Minds Studios different</h2>
-            <p className="mt-3 text-slate-500 text-sm max-w-xl mx-auto">Families return because they feel the difference — in their student's confidence, their communication with tutors, and their results.</p>
+            <p className="mt-3 text-slate-500 text-sm max-w-xl mx-auto">Families return because they feel the difference: in their student's confidence, their communication with tutors, and their results.</p>
           </motion.div>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {whyStay.map(({ icon: Icon, label, desc }, i) =>
@@ -170,7 +170,7 @@ export default function About() {
                 {[
                 'Zoom-based one-on-one sessions',
                 'Flexible scheduling to fit your family',
-                'Remote-first — no commute required',
+                'Remote-first, no commute required',
                 'Easy access from any device',
                 'Session recordings available on request'].
                 map((item) =>
@@ -213,7 +213,7 @@ export default function About() {
                 <div className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1">Monthly programs</div>
                 <div className="text-2xl font-bold mb-1" style={{ color: 'rgb(98,191,161)' }}>Tier Based</div>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  Foundation, Score Boost, and Elite Intensive programs — each designed to match your student's goals and commitment level.
+                  Foundation, Score Boost, and Elite Intensive programs, each designed to match your student's goals and commitment level.
                 </p>
                 <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold transition-all duration-200 group-hover:gap-3" style={{ color: 'rgb(98,191,161)' }}>
                   Explore monthly programs <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />

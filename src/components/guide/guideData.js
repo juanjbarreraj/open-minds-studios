@@ -13,8 +13,8 @@ export const chapters = [
         context: 'I just registered as a student with Open Minds Studios. What do I do next?',
         steps: [
           'Click on “Student / Parent Login”.',
-          'Click on “Continue to Sign In”.',
-          'Continue with a Google Account or the email you registered with.',
+          'Enter the email and password you registered with, then click “Sign In”.',
+          'New families can switch to “Create Account” in the same window. Your manager approves portal access before the dashboard opens.',
           'Congratulations, you have successfully logged in!',
         ],
       },
@@ -53,8 +53,8 @@ export const chapters = [
         context: 'I just joined Open Minds Studios as a tutor. What do I do next?',
         steps: [
           'Open your browser and navigate to the Open Minds Studios website. You will see the homepage with the logo centered and two login buttons at the bottom.',
-          'Click the “Tutor Login” button on the right. A pop-up modal will appear with a Tutor Access prompt. Click “Continue to Sign In” to proceed.',
-          'You will be taken to the sign-in page. Choose one of two methods to log in, or sign up with your manager-approved email.',
+          'Click the “Tutor Login” button on the right. A pop-up modal will appear with a Tutor Access prompt.',
+          'Enter your Open Minds email and password, then click “Sign In”. If you have not registered yet, switch to “Create Account” and use your manager-approved email. A manager approves your account before the dashboard opens.',
           'Once signed in, you will land on your tutor dashboard, where you can view upcoming appointments, respond to pending session requests, and manage your student roster.',
         ],
       },
@@ -100,9 +100,7 @@ export const chapters = [
         context: 'I’m a Manager / Super Admin and want to manage others. How can I do this?',
         steps: [
           'On the landing page, click “Tutor Login”.',
-          'Click the blue button labeled “Continue to Sign In”.',
-          'Choose a sign-in method — sign in with your Google account or the email and password created for Open Minds.',
-          'Click “Continue with Google” if using a Google account, or enter your Open Minds email and password and click “Sign In”.',
+          'Enter the email and password created for Open Minds, then click “Sign In”.',
           'After signing in, you will be taken to the Tutor Dashboard.',
           'If you are an admin, click the “Manager” button in the top-right corner to access the admin tools. The current page is highlighted in the left navigation bar.',
         ],
@@ -114,7 +112,7 @@ export const chapters = [
         steps: [
           'In the left panel, click “Tutors”.',
           'On the Tutor Management page, click “Add Tutor”.',
-          'Fill in the tutor’s information — name, phone number, email, and sign-in method (Google account or email and password).',
+          'Fill in the tutor’s information: name, phone number, and email. The tutor signs in with that email and a password they create.',
           'Select the tutor’s access level. Click “Approved” for regular access; only select “Manager Access” or “Super Admin” if they need administrative permissions.',
           'Once added, the tutor’s information will appear on the Tutor Management page.',
         ],

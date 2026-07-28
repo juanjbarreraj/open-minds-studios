@@ -27,7 +27,7 @@ export default function Guide() {
               Step-by-Step Guide
             </h1>
             <p className="mt-4 text-base text-slate-500">
-              Everything you need to get started with Open Minds Studios — for students, parents, tutors, and managers.
+              Everything you need to get started with Open Minds Studios, for students, parents, tutors, and managers.
             </p>
             <a
               href={PDF_URL}
