@@ -56,14 +56,53 @@ export const upload = multer({
 
 export function recordUpload(file, userId) {
   const id = newId();
-  db.prepare(`INSERT INTO files (id, stored_name, original_name, mime_type, size_bytes, uploader_user_id)
-    VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(id, file.filename, path.basename(file.originalname), file.mimetype, file.size, userId);
+  try {
+    db.prepare(`INSERT INTO files (id, stored_name, original_name, mime_type, size_bytes, uploader_user_id)
+      VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(id, file.filename, path.basename(file.originalname), file.mimetype, file.size, userId);
+  } catch (err) {
+    // Multer already wrote the blob. If the row cannot be created the blob is
+    // unreachable, so remove it instead of leaving litter on disk.
+    try {
+      fs.rmSync(path.resolve(UPLOADS_DIR, file.filename), { force: true });
+    } catch (cleanupErr) {
+      console.error('[files] could not remove orphaned blob after a failed insert:', cleanupErr);
+    }
+    throw err;
+  }
   return {
     id,
     file_url: `/api/files/${id}`,
     file_name: path.basename(file.originalname),
   };
+}
+
+// Files are uploaded before the module that references them is created, so an
+// abandoned form leaves a row nothing points at. This removes those, never
+// touching a file any module still uses.
+export function removeOrphanFiles({ olderThanHours = 24 } = {}) {
+  const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000).toISOString();
+  const orphans = db
+    .prepare(`SELECT * FROM files
+      WHERE created_at < ?
+      AND id NOT IN (SELECT file_id FROM modules WHERE file_id IS NOT NULL)
+      AND id NOT IN (SELECT submission_file_id FROM modules WHERE submission_file_id IS NOT NULL)`)
+    .all(cutoff);
+
+  let blobsRemoved = 0;
+  for (const row of orphans) {
+    try {
+      const abs = path.resolve(UPLOADS_DIR, row.stored_name);
+      if (abs.startsWith(path.resolve(UPLOADS_DIR) + path.sep) && fs.existsSync(abs)) {
+        fs.rmSync(abs, { force: true });
+        blobsRemoved += 1;
+      }
+    } catch (err) {
+      console.error(`[files] could not remove ${row.stored_name}:`, err);
+    }
+    db.prepare('DELETE FROM files WHERE id = ?').run(row.id);
+  }
+  return { recordsRemoved: orphans.length, blobsRemoved };
 }
 
 // stored_name is generated server-side (hex + short extension), but resolve

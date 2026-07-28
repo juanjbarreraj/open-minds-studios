@@ -3,6 +3,10 @@ import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
 import { isManager } from '../middleware/auth.js';
+import {
+  assertMayActOnTutor, assertMayChangeElevatedFlags, assertKeepsASuperAdmin,
+  assertUserMayHoldTutorProfile, assertNoConflictingProfile, isSuperAdmin,
+} from '../lib/privileges.js';
 import { badRequest, notFound, conflict, forbidden } from '../middleware/errors.js';
 
 const tutorSchema = z.object({
@@ -15,8 +19,11 @@ const tutorSchema = z.object({
   is_super_admin: z.boolean().optional().default(false),
 });
 
-// Fields safe to show non-managers (students picking a tutor).
-const PUBLIC_FIELDS = ['id', 'full_name', 'email', 'bio', 'approved', 'created_at', 'created_date'];
+// Fields safe to show non-managers (students picking a tutor). Contact
+// details are deliberately absent: a student selects a tutor by name, and the
+// tutor reaches out through the appointment, so publishing staff email
+// addresses to every account has no purpose.
+const PUBLIC_FIELDS = ['id', 'full_name', 'bio', 'approved', 'created_at', 'created_date'];
 
 export function listTutors(req, res) {
   const rows = serializeRows(db.prepare('SELECT * FROM tutors ORDER BY created_at DESC').all());
@@ -33,23 +40,9 @@ export function listTutors(req, res) {
   return res.json(approvedOnly.map((t) => Object.fromEntries(PUBLIC_FIELDS.map((f) => [f, t[f]]))));
 }
 
-// Elevated flags may only be changed by a super admin, in either direction:
-// granting them is escalation, and revoking them would let one manager lock
-// out the super admin.
-function guardElevatedFlags(req, data, existing = null) {
-  const touchesElevated =
-    (data.can_access_manager_dashboard !== undefined &&
-      data.can_access_manager_dashboard !== Boolean(existing?.can_access_manager_dashboard)) ||
-    (data.is_super_admin !== undefined && data.is_super_admin !== Boolean(existing?.is_super_admin));
-  if (!touchesElevated) return;
-  if (!req.tutor?.is_super_admin && req.user.role !== 'admin') {
-    throw forbidden('Only a super admin can change manager or super admin access.');
-  }
-}
-
 export function createTutor(req, res) {
   const data = tutorSchema.parse(req.body);
-  guardElevatedFlags(req, data);
+  assertMayChangeElevatedFlags(req, data);
   if (db.prepare('SELECT id FROM tutors WHERE email = ? COLLATE NOCASE').get(data.email)) {
     throw conflict('A tutor with that email already exists.');
   }
@@ -70,7 +63,17 @@ export function updateTutor(req, res) {
   const existing = db.prepare('SELECT * FROM tutors WHERE id = ?').get(req.params.id);
   if (!existing) throw notFound('Tutor not found');
   const data = tutorSchema.partial().parse(req.body);
-  guardElevatedFlags(req, data, existing);
+
+  // Any edit to an elevated profile is a super admin action, not just the
+  // flag fields: changing the email, or withdrawing approval, would move or
+  // revoke that access just as effectively.
+  assertMayActOnTutor(req, existing, 'edit a manager or super admin profile');
+  assertMayChangeElevatedFlags(req, data, existing);
+
+  const losesFlag = data.is_super_admin === false && Boolean(existing.is_super_admin);
+  const losesApproval = data.approved === false && Boolean(existing.approved);
+  assertKeepsASuperAdmin(existing, { removingFlag: losesFlag || losesApproval });
+
   if (data.email && existing.user_id && data.email.toLowerCase() !== existing.email.toLowerCase()) {
     throw badRequest('Unlink the portal account before changing this email address.');
   }
@@ -93,8 +96,11 @@ export function updateTutor(req, res) {
 }
 
 export function deleteTutor(req, res) {
-  const existing = db.prepare('SELECT id FROM tutors WHERE id = ?').get(req.params.id);
+  const existing = db.prepare('SELECT * FROM tutors WHERE id = ?').get(req.params.id);
   if (!existing) throw notFound('Tutor not found');
+
+  assertMayActOnTutor(req, existing, 'delete a manager or super admin profile');
+  assertKeepsASuperAdmin(existing, { removingProfile: true });
 
   // Appointment and module history belongs to the students too, so a tutor
   // with records is never deletable. Unapprove them instead.
@@ -121,15 +127,27 @@ export function linkTutorAccount(req, res) {
   const existing = db.prepare('SELECT * FROM tutors WHERE id = ?').get(req.params.id);
   if (!existing) throw notFound('Tutor not found');
 
+  // Linking and unlinking both move who holds this profile's access, so an
+  // elevated profile is super-admin territory in either direction.
+  assertMayActOnTutor(req, existing, 'link or unlink a manager or super admin profile');
+
   const { link } = z.object({ link: z.boolean().default(true) }).parse(req.body ?? {});
   if (!link) {
+    assertKeepsASuperAdmin(existing, { removingLink: true });
     db.prepare("UPDATE tutors SET user_id = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
       .run(existing.id);
     return res.json(serializeRow(db.prepare('SELECT * FROM tutors WHERE id = ?').get(existing.id)));
   }
 
+  if (existing.user_id) {
+    throw conflict('That profile is already linked. Unlink it before linking a different account.');
+  }
+
   const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(existing.email);
   if (!user) throw badRequest('No portal account has registered with that email address yet.');
+  assertUserMayHoldTutorProfile(user);
+  assertNoConflictingProfile(user, { wants: 'tutor' });
+
   const taken = db.prepare('SELECT id FROM tutors WHERE user_id = ? AND id != ?').get(user.id, existing.id);
   if (taken) throw conflict('That portal account is already linked to another tutor profile.');
 

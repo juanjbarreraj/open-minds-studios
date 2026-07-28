@@ -2,6 +2,7 @@ import { z } from 'zod';
 import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
+import { assertUserMayHoldStudentProfile, assertNoConflictingProfile } from '../lib/privileges.js';
 import { badRequest, notFound, conflict } from '../middleware/errors.js';
 
 const studentSchema = z.object({
@@ -75,8 +76,15 @@ export function linkStudentAccount(req, res) {
     return res.json(serializeRow(db.prepare('SELECT * FROM students WHERE id = ?').get(existing.id)));
   }
 
+  if (existing.user_id) {
+    throw conflict('That profile is already linked. Unlink it before linking a different account.');
+  }
+
   const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(existing.email);
   if (!user) throw badRequest('No portal account has registered with that email address yet.');
+  assertUserMayHoldStudentProfile(user);
+  assertNoConflictingProfile(user, { wants: 'student' });
+
   const taken = db.prepare('SELECT id FROM students WHERE user_id = ? AND id != ?').get(user.id, existing.id);
   if (taken) throw conflict('That portal account is already linked to another student profile.');
 

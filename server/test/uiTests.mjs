@@ -1,7 +1,8 @@
-// End-to-end UI verification against the running dev stack (localhost:5173).
+// End-to-end UI verification against a running stack. Defaults to the normal
+// dev server; `npm run test:all` points it at a temporary stack instead.
 import { chromium } from 'playwright';
 
-const BASE = 'http://localhost:5173';
+const BASE = process.env.UI_TEST_BASE_URL || 'http://localhost:5173';
 let passed = 0;
 const failures = [];
 const netErrors = [];
@@ -111,6 +112,18 @@ if (modalVisible) {
   const dash = await page.textContent('body');
   check('student dashboard loads with data', /Alex|Session|Module|Dashboard|Upcoming/i.test(dash), dash.slice(0, 120));
   check('student dashboard is not showing pending-approval', !/pending approval/i.test(dash));
+
+  // Progress must come from the database, not from hardcoded placeholders.
+  check('dashboard shows seeded progress metrics',
+    /Practice tests completed/i.test(dash) && /Latest practice score/i.test(dash),
+    dash.replace(/\s+/g, ' ').slice(0, 400));
+  check('dashboard shows the seeded focus item',
+    /SAT Math: timing strategy/i.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
+  check('the old placeholder metrics are gone',
+    !/Math Confidence/i.test(dash) && !/\+160 pts/i.test(dash) && !/Reading Accuracy/i.test(dash),
+    dash.replace(/\s+/g, ' ').slice(0, 400));
+  check('no invented 75 percent prep plan remains',
+    !/75% of weekly prep plan/i.test(dash));
 
   console.log('\n== Scheduling grid ==');
   await goto('/appointment-scheduling');
@@ -261,6 +274,43 @@ if (await mpage.locator('input[type="password"]').isVisible().catch(() => false)
   check('no raw lowercase status leaks into the UI', !/\b(pending|confirmed|declined|cancelled|completed)\b/.test(mgrBody.replace(/Appointment Confirmed/g, '')), mgrBody.replace(/\s+/g, ' ').slice(150, 350));
   check('booking row shows the real session date', /\d{4}-\d{2}-\d{2}/.test(mgrBody), mgrBody.replace(/\s+/g, ' ').slice(150, 350));
   check('no em dash in manager dashboard text', !mgrBody.includes('—'));
+
+  // Inquiries tab: review a lead and work it through the local pipeline.
+  const inqTab = mpage.locator('button').filter({ hasText: /^Inquiries$/ }).first();
+  check('manager dashboard has an Inquiries tab', await inqTab.count() > 0);
+  if (await inqTab.count()) {
+    await inqTab.click();
+    await mpage.waitForTimeout(1200);
+    const inqBody = await mpage.textContent('body');
+    check('inquiries list shows a seeded lead', /Taylor Demo/.test(inqBody), inqBody.replace(/\s+/g, ' ').slice(150, 400));
+    const statusBadges = await mpage.locator('span').filter({ hasText: /^(New|Contacted|Closed)$/ }).count();
+    check('inquiries show a workflow status', statusBadges > 0, `badges=${statusBadges}`);
+
+    // Expand the first inquiry and check the detail fields are all present.
+    await mpage.locator('button').filter({ hasText: /Taylor Demo/ }).first().click();
+    await mpage.waitForTimeout(700);
+    const detail = await mpage.textContent('body');
+    check('inquiry detail shows the submitted fields',
+      /Student grade/i.test(detail) && /Subject or exam/i.test(detail) &&
+      /Interested program/i.test(detail) && /Goals/i.test(detail),
+      detail.replace(/\s+/g, ' ').slice(200, 500));
+
+    // Update status and notes, then confirm it persisted.
+    await mpage.locator('button', { hasText: /Update status and notes/i }).first().click();
+    await mpage.waitForTimeout(500);
+    await mpage.locator('select').last().selectOption('contacted');
+    await mpage.locator('textarea').last().fill('Called the family. Browser test note.');
+    await mpage.locator('button', { hasText: /Save/ }).first().click();
+    await mpage.waitForTimeout(1500);
+    const savedBody = await mpage.textContent('body');
+    check('inquiry status update persists', /Contacted/.test(savedBody), savedBody.replace(/\s+/g, ' ').slice(150, 400));
+
+    await mpage.reload({ waitUntil: 'networkidle' });
+    await mpage.locator('button').filter({ hasText: /^Inquiries$/ }).first().click();
+    await mpage.waitForTimeout(1200);
+    const afterReload = await mpage.textContent('body');
+    check('inquiry workflow survives a reload', /Contacted/.test(afterReload));
+  }
 } else {
   check('manager sign-in form appears', false);
 }

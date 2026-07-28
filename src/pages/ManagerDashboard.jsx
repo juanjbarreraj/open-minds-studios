@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
-import { Loader2, ShieldX, LayoutDashboard, Users, BookOpen, Link2, Clock, CalendarDays, LogOut, ArrowLeft } from 'lucide-react';
+import { Loader2, ShieldX, LayoutDashboard, Users, BookOpen, Link2, Clock, CalendarDays, Mail, LogOut, ArrowLeft } from 'lucide-react';
 import SiteLogo from '../components/shared/SiteLogo';
 import AuthModal from '@/components/landing/AuthModal';
 import TutorManager from '../components/manager/TutorManager';
@@ -9,6 +9,7 @@ import TutorCourseManager from '../components/manager/TutorCourseManager';
 import AvailabilityAdminManager from '../components/manager/AvailabilityAdminManager';
 import BookingManager from '../components/manager/BookingManager';
 import StudentManager from '../components/manager/StudentManager';
+import InquiryManager from '../components/manager/InquiryManager';
 import { Link } from 'react-router-dom';
 
 const TABS = [
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'availability', label: 'Availability', icon: Clock },
   { id: 'bookings', label: 'Bookings', icon: CalendarDays },
   { id: 'students', label: 'Students', icon: Users },
+  { id: 'inquiries', label: 'Inquiries', icon: Mail },
 ];
 
 export default function ManagerDashboard() {
@@ -63,6 +65,7 @@ export default function ManagerDashboard() {
     availability: AvailabilityAdminManager,
     bookings: BookingManager,
     students: StudentManager,
+    inquiries: InquiryManager,
   }[activeTab];
 
   return (

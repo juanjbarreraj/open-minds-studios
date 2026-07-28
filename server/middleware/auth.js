@@ -68,6 +68,14 @@ export function requireManager(req, res, next) {
   return next();
 }
 
+// Route guard for the few actions reserved to super admins (audited booking
+// overrides, orphan-file maintenance).
+export function requireSuperAdminRoute(req, res, next) {
+  if (!req.user) return next(unauthorized());
+  if (req.user.role === 'admin' || req.tutor?.is_super_admin) return next();
+  return next(forbidden('Super admin access required'));
+}
+
 export function requireApprovedTutor(req, res, next) {
   if (!req.user) return next(unauthorized());
   if (isManager(req)) return next();

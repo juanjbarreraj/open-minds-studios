@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Users, BookOpen } from 'lucide-react';
+import { Users, BookOpen, TrendingUp } from 'lucide-react';
 import AssignModuleModal from './AssignModuleModal';
+import StudentProgressModal from './StudentProgressModal';
 
 export default function MyStudentsSection({ bookings, onModuleAssigned }) {
   const [hoveredId, setHoveredId] = useState(null);
   const [assigningStudent, setAssigningStudent] = useState(null);
+  const [progressStudent, setProgressStudent] = useState(null);
 
   // Students the tutor has actually accepted: confirmed sessions plus ones
   // already delivered, so a student does not disappear from the roster (and
@@ -16,11 +18,15 @@ export default function MyStudentsSection({ bookings, onModuleAssigned }) {
     const key = b.student_email;
     if (!studentMap[key]) {
       studentMap[key] = {
+        id: b.student_id,
         email: b.student_email,
         name: `${b.student_first_name} ${b.student_last_name}`.trim(),
         firstName: b.student_first_name,
         lastName: b.student_last_name,
       };
+    } else if (!studentMap[key].id && b.student_id) {
+      // An older booking may predate the student profile; keep the first id found.
+      studentMap[key].id = b.student_id;
     }
   }
   const students = Object.values(studentMap);
@@ -57,7 +63,7 @@ export default function MyStudentsSection({ bookings, onModuleAssigned }) {
             </div>
 
             {hoveredId === s.email && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/90 backdrop-blur-sm">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-white/90 backdrop-blur-sm">
                 <button
                   onClick={() => setAssigningStudent(s)}
                   className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-105"
@@ -66,6 +72,15 @@ export default function MyStudentsSection({ bookings, onModuleAssigned }) {
                   <BookOpen className="h-4 w-4" />
                   Assign Modules
                 </button>
+                {s.id && (
+                  <button
+                    onClick={() => setProgressStudent(s)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    Update Progress
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -80,6 +95,13 @@ export default function MyStudentsSection({ bookings, onModuleAssigned }) {
             setAssigningStudent(null);
             onModuleAssigned?.();
           }}
+        />
+      )}
+
+      {progressStudent && (
+        <StudentProgressModal
+          student={progressStudent}
+          onClose={() => setProgressStudent(null)}
         />
       )}
     </>

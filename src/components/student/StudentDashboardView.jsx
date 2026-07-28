@@ -3,24 +3,20 @@ import { bookingsApi, bookingStatusLabel } from '@/api/bookingsApi';
 import { modulesApi } from '@/api/modulesApi';
 import { coursesApi } from '@/api/coursesApi';
 import { tutorsApi } from '@/api/tutorsApi';
+import { progressApi } from '@/api/progressApi';
 import { CheckCircle2 } from 'lucide-react';
 import MetricCards from './MetricCards';
 import TodaysFocus from './TodaysFocus';
 import UpcomingSessions from './UpcomingSessions';
 import AssignedModules from './AssignedModules';
 
-const mockMetrics = [
-  { label: 'Math Confidence', value: '+18%' },
-  { label: 'Reading Accuracy', value: '+12%' },
-  { label: 'Practice Test Score', value: '+160 pts' },
-  { label: 'Attendance', value: '100%' },
-];
-
 export default function StudentDashboardView({ user, student }) {
   const [bookings, setBookings] = useState([]);
   const [courses, setCourses] = useState([]);
   const [tutors, setTutors] = useState([]);
   const [modules, setModules] = useState([]);
+  const [metrics, setMetrics] = useState([]);
+  const [focus, setFocus] = useState(null);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [loadingModules, setLoadingModules] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -41,14 +37,17 @@ export default function StudentDashboardView({ user, student }) {
     if (!student) return;
     (async () => {
       try {
-        const [allBookings, allCourses, allTutors] = await Promise.all([
+        const [allBookings, allCourses, allTutors, progress] = await Promise.all([
           bookingsApi.list(),
           coursesApi.list(),
           tutorsApi.list(),
+          progressApi.get(),
         ]);
         setBookings(allBookings);
         setCourses(allCourses);
         setTutors(allTutors);
+        setMetrics(progress.metrics);
+        setFocus(progress.focus[0] || null);
       } catch (err) {
         setLoadError(err?.message || 'We could not load your sessions.');
       } finally {
@@ -107,10 +106,10 @@ export default function StudentDashboardView({ user, student }) {
       </div>
 
       {/* Metrics */}
-      <MetricCards metrics={mockMetrics} />
+      <MetricCards metrics={metrics} />
 
       {/* Today's focus */}
-      <TodaysFocus />
+      <TodaysFocus focus={focus} />
 
       {/* Sessions + Modules */}
       <div className="grid gap-6 lg:grid-cols-2">

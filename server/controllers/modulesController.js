@@ -37,12 +37,33 @@ export function listModules(req, res) {
 
 const createSchema = z.object({
   student_email: z.string().trim().email(),
-  student_id: z.string().optional().default(''),
+  student_id: z.string().trim().optional().default(''),
   student_name: z.string().trim().max(160).optional().default(''),
   name: z.string().trim().min(1).max(200),
   description: z.string().max(8000).optional().default(''),
   file_id: z.string().optional().nullable(),
 });
+
+// Module access is checked against both student_id and student_email, so the
+// two must describe the same person or a module would be readable by two
+// unrelated students. Whichever identifier the client sends, the stored
+// identity comes from the database row, never from the request body.
+function resolveModuleStudent(data) {
+  if (data.student_id) {
+    const byId = db.prepare('SELECT * FROM students WHERE id = ?').get(data.student_id);
+    if (!byId) throw badRequest('That student profile does not exist.');
+    if (data.student_email && byId.email.toLowerCase() !== data.student_email.toLowerCase()) {
+      throw badRequest('The student id and email address refer to different students.');
+    }
+    return byId;
+  }
+
+  const byEmail = db.prepare('SELECT * FROM students WHERE email = ? COLLATE NOCASE').get(data.student_email);
+  // Assigning by email alone before the family has a profile is the
+  // pre-registration case the original app supported. It is kept, with the
+  // module holding only the email until a profile exists.
+  return byEmail || null;
+}
 
 export function createModule(req, res) {
   if (!req.tutor && !isManager(req)) throw forbidden('Only tutors can assign modules.');
@@ -50,9 +71,7 @@ export function createModule(req, res) {
   const tutor = req.tutor;
   if (!tutor) throw badRequest('A tutor profile is required to assign modules.');
 
-  const student = data.student_id
-    ? db.prepare('SELECT * FROM students WHERE id = ?').get(data.student_id)
-    : db.prepare('SELECT * FROM students WHERE email = ? COLLATE NOCASE').get(data.student_email);
+  const student = resolveModuleStudent(data);
 
   const file = fileInfo(data.file_id, req);
   const id = newId();
@@ -65,9 +84,10 @@ export function createModule(req, res) {
       id,
       tutor_id: tutor.id,
       student_id: student?.id || null,
-      student_email: data.student_email,
+      // Canonical values win over anything the client supplied.
+      student_email: student?.email || data.student_email,
       tutor_name: tutor.full_name || '',
-      student_name: data.student_name || student?.full_name || '',
+      student_name: student?.full_name || data.student_name || '',
       name: data.name,
       description: data.description,
       file_id: data.file_id || null,

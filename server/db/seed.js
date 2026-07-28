@@ -13,6 +13,7 @@ export function runSeed() {
 
   const wipe = db.transaction(() => {
     for (const table of [
+      'admin_overrides', 'student_focus', 'student_progress_metrics',
       'notification_outbox', 'inquiries', 'modules', 'files', 'bookings',
       'availability_slots', 'tutor_courses', 'courses', 'tutors', 'students',
       'sessions', 'users',
@@ -136,10 +137,29 @@ export function runSeed() {
       'Linear Equations Worksheet',
       'Complete the practice problems and upload your work before our next session.');
 
-  // Sample inquiry.
-  db.prepare(`INSERT INTO inquiries (id, parent_name, email, student_grade, subject_or_exam, goals, message, interested_program)
-    VALUES (?, 'Taylor Demo', 'parent@demo.local', '11th Grade', 'SAT', 'Raise math score by 100 points', 'Sample inquiry created by the local seed script.', 'Score Boost Program')`)
-    .run(newId());
+  // Sample inquiries, one per workflow state.
+  const insertInquiry = db.prepare(`INSERT INTO inquiries
+    (id, parent_name, email, student_grade, subject_or_exam, goals, message, interested_program, status, manager_notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  insertInquiry.run(newId(), 'Taylor Demo', 'parent@demo.local', '11th Grade', 'SAT',
+    'Raise math score by 100 points', 'Sample inquiry created by the local seed script.',
+    'Score Boost Program', 'new', '');
+  insertInquiry.run(newId(), 'Jamie Demo', 'jamie@demo.local', '9th Grade', 'Algebra I',
+    'Build confidence before finals', 'Sample inquiry created by the local seed script.',
+    'Foundation Program', 'contacted', 'Left a voicemail on Monday. Demo note.');
+
+  // Demo progress for the demo student. Clearly labeled as sample data so it
+  // is never mistaken for a real record.
+  const insertMetric = db.prepare(`INSERT INTO student_progress_metrics
+    (id, student_id, label, value, numeric_value, unit, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  insertMetric.run(newId(), studentId, 'Practice tests completed', '4', 4, null, 0);
+  insertMetric.run(newId(), studentId, 'Latest practice score', '1280', 1280, 'points', 1);
+  insertMetric.run(newId(), studentId, 'Sessions attended', '6', 6, null, 2);
+
+  db.prepare(`INSERT INTO student_focus (id, student_id, title, description, progress_percent, active)
+    VALUES (?, ?, ?, ?, ?, 1)`)
+    .run(newId(), studentId, 'SAT Math: timing strategy',
+      'Work through no-calculator drills and review pacing on section 3. Demo focus item from the seed script.', 60);
 
   console.log('[db] seed complete. Local demo accounts:');
   console.log('  student@demo.local / student123   (approved student)');

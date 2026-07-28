@@ -27,8 +27,25 @@ export function nowTimeInAppTz() {
   }).format(new Date());
 }
 
-export const isValidDateString = (s) =>
-  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+// Strict calendar validation. Date.parse alone is not enough: it happily
+// normalizes 2026-02-31 into March, so an impossible date would be accepted
+// and then silently mean a different day.
+export function isValidDateString(s) {
+  if (typeof s !== 'string') return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (month < 1 || month > 12) return false;
+  if (day < 1) return false;
+  return day <= daysInMonth(year, month);
+}
+
+export function daysInMonth(year, month) {
+  const lengths = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return lengths[month - 1];
+}
+
+export const isLeapYear = (year) => (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 
 export const isValidTimeString = (s) =>
   typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);

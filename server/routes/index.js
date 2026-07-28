@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import {
   requireAuth, requireManager, requireApprovedTutor, requireApprovedStudent, requirePortalAccess,
+  requireSuperAdminRoute,
 } from '../middleware/auth.js';
+import { loginLimiter, registerLimiter, inquiryLimiter } from '../middleware/rateLimit.js';
 import * as auth from '../controllers/authController.js';
 import * as students from '../controllers/studentsController.js';
 import * as tutors from '../controllers/tutorsController.js';
@@ -11,6 +13,7 @@ import * as bookings from '../controllers/bookingsController.js';
 import * as modules from '../controllers/modulesController.js';
 import * as inquiries from '../controllers/inquiriesController.js';
 import * as files from '../controllers/filesController.js';
+import * as progress from '../controllers/progressController.js';
 import { upload } from '../services/fileService.js';
 
 // Small helper so async controllers propagate errors to the error handler.
@@ -19,8 +22,8 @@ const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(
 const router = Router();
 
 // Auth
-router.post('/auth/register', h(auth.register));
-router.post('/auth/login', h(auth.login));
+router.post('/auth/register', registerLimiter, h(auth.register));
+router.post('/auth/login', loginLimiter, h(auth.login));
 router.post('/auth/logout', h(auth.logout));
 router.get('/auth/me', h(auth.me));
 router.post('/auth/change-password', requireAuth, h(auth.changePassword));
@@ -62,6 +65,8 @@ router.get('/bookings/busy', requirePortalAccess, h(bookings.listBusySlots));
 router.post('/bookings', requireApprovedStudent, h(bookings.create));
 router.patch('/bookings/:id/status', requirePortalAccess, h(bookings.updateStatus));
 router.patch('/bookings/:id', requireManager, h(bookings.managerUpdate));
+// Audited bypass of the scheduler; super admin only.
+router.post('/bookings/:id/override-status', requireSuperAdminRoute, h(bookings.overrideStatus));
 router.delete('/bookings/:id', requireManager, h(bookings.remove));
 
 // Modules
@@ -74,9 +79,24 @@ router.post('/modules/:id/grade', requireApprovedTutor, h(modules.gradeModule));
 router.post('/files', requirePortalAccess, upload.single('file'), h(files.uploadFile));
 router.get('/files/:id', requirePortalAccess, h(files.downloadFile));
 
-// Inquiries (public create; manager read)
-router.post('/inquiries', h(inquiries.createInquiry));
+// Student progress (students read their own; tutors maintain their roster;
+// managers maintain anyone)
+router.get('/progress', requirePortalAccess, h(progress.getProgress));
+router.get('/progress/:studentId', requirePortalAccess, h(progress.getProgress));
+router.post('/progress/:studentId/metrics', requirePortalAccess, h(progress.createMetric));
+router.patch('/progress/metrics/:id', requirePortalAccess, h(progress.updateMetric));
+router.delete('/progress/metrics/:id', requirePortalAccess, h(progress.deleteMetric));
+router.post('/progress/:studentId/focus', requirePortalAccess, h(progress.createFocus));
+router.patch('/progress/focus/:id', requirePortalAccess, h(progress.updateFocus));
+router.delete('/progress/focus/:id', requirePortalAccess, h(progress.deleteFocus));
+
+// Inquiries (public create; manager read and workflow)
+router.post('/inquiries', inquiryLimiter, h(inquiries.createInquiry));
 router.get('/inquiries', requireManager, h(inquiries.listInquiries));
+router.patch('/inquiries/:id', requireManager, h(inquiries.updateInquiry));
+
+// Maintenance (super admin): remove upload blobs no module references.
+router.post('/maintenance/orphan-files', requireSuperAdminRoute, h(files.cleanupOrphans));
 
 router.get('/health', (req, res) => res.json({ ok: true }));
 

@@ -2,11 +2,25 @@ import fs from 'node:fs';
 import db from '../db/database.js';
 import { isManager } from '../middleware/auth.js';
 import { badRequest, forbidden, notFound } from '../middleware/errors.js';
-import { recordUpload, canAccessFile, absolutePathFor } from '../services/fileService.js';
+import { z } from 'zod';
+import { recordUpload, canAccessFile, absolutePathFor, removeOrphanFiles } from '../services/fileService.js';
 
 export function uploadFile(req, res) {
   if (!req.file) throw badRequest('No file was uploaded.');
   res.status(201).json(recordUpload(req.file, req.user.id));
+}
+
+// Maintenance utility: drop upload records and blobs that no module
+// references. Files attached to a module are never touched.
+export function cleanupOrphans(req, res) {
+  const { older_than_hours } = z
+    .object({ older_than_hours: z.number().int().min(0).max(24 * 365).optional() })
+    .parse(req.body ?? {});
+  const result = removeOrphanFiles(
+    older_than_hours === undefined ? {} : { olderThanHours: older_than_hours }
+  );
+  console.log(`[files] orphan cleanup by ${req.user.email}: ${result.recordsRemoved} record(s), ${result.blobsRemoved} blob(s)`);
+  res.json({ ok: true, ...result });
 }
 
 export function downloadFile(req, res) {

@@ -4,8 +4,10 @@
 //    availability window on that weekday, at a 60-minute step from the
 //    window start (09:00-17:00 -> last valid start 16:00)
 //  - bookings allowed from today through 30 days ahead (America/New_York)
-//  - one live (pending/confirmed) booking per tutor/date/start, enforced by
-//    a transaction plus the ux_bookings_live_slot unique index
+//  - one live (pending/confirmed) booking per tutor/date/start and per
+//    student/date/start, enforced by a transaction plus the
+//    ux_bookings_live_slot and ux_bookings_student_live_slot unique indexes
+//  - a chosen course must actually be taught by the chosen tutor
 import db from '../db/database.js';
 import { newId } from '../lib/ids.js';
 import {
@@ -35,41 +37,104 @@ export function findCoveringSlot(tutorId, dayName, startTime) {
   );
 }
 
-export function createBooking({ tutor, student, payload }) {
-  const { session_date, preferred_start_time } = payload;
+export function endTimeFor(startTime) {
+  const endMins = timeToMinutes(startTime) + APPOINTMENT_MINUTES;
+  return `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+}
 
-  if (!isValidDateString(session_date)) throw badRequest('A valid session date is required.');
-  if (!isValidTimeString(preferred_start_time)) throw badRequest('A valid start time is required.');
+// A course may only be chosen when the selected tutor actually teaches it.
+// A tutor with no assigned courses can still be booked, with course_id null,
+// so that scheduling is never blocked by incomplete manager setup.
+function assertCourseTaughtByTutor(tutorId, courseId) {
+  if (!courseId) return;
+  const course = db.prepare('SELECT id FROM courses WHERE id = ?').get(courseId);
+  if (!course) throw badRequest('That course does not exist.');
+  const assigned = db
+    .prepare('SELECT id FROM tutor_courses WHERE tutor_id = ? AND course_id = ?')
+    .get(tutorId, courseId);
+  if (!assigned) throw badRequest('That tutor does not teach the selected course.');
+}
+
+function assertNoTutorConflict({ tutorId, sessionDate, startTime, endTime, excludeBookingId = null }) {
+  const clash = db
+    .prepare(`SELECT id FROM bookings
+      WHERE tutor_id = ? AND session_date = ?
+      AND preferred_start_time < ? AND preferred_end_time > ?
+      AND status IN ('pending', 'confirmed') AND id IS NOT ?`)
+    .get(tutorId, sessionDate, endTime, startTime, excludeBookingId);
+  if (clash) throw conflict('That time slot has just been booked by someone else.');
+}
+
+// A student cannot be in two places at once, even with two different tutors.
+function assertNoStudentConflict({ studentEmail, sessionDate, startTime, endTime, excludeBookingId = null }) {
+  const clash = db
+    .prepare(`SELECT id FROM bookings
+      WHERE student_email = ? COLLATE NOCASE AND session_date = ?
+      AND preferred_start_time < ? AND preferred_end_time > ?
+      AND status IN ('pending', 'confirmed') AND id IS NOT ?`)
+    .get(studentEmail, sessionDate, endTime, startTime, excludeBookingId);
+  if (clash) throw conflict('You already have another appointment during that time.');
+}
+
+// Every rule a booking must satisfy to be live. Used both when a student
+// books and when a manager revives a cancelled or declined appointment, so
+// the two paths cannot drift apart.
+export function validateBookingIsSchedulable({
+  tutorId, studentEmail, sessionDate, startTime, courseId = null, excludeBookingId = null,
+}) {
+  if (!isValidDateString(sessionDate)) throw badRequest('A valid session date is required.');
+  if (!isValidTimeString(startTime)) throw badRequest('A valid start time is required.');
+
+  const tutor = db.prepare('SELECT * FROM tutors WHERE id = ?').get(tutorId);
+  if (!tutor) throw notFound('Tutor not found');
+  if (!tutor.approved) throw badRequest('That tutor is not currently approved for appointments.');
 
   const today = todayInAppTz();
-  if (session_date < today) throw badRequest('Past dates cannot be booked.');
-  if (session_date === today && preferred_start_time <= nowTimeInAppTz()) {
+  if (sessionDate < today) throw badRequest('Past dates cannot be booked.');
+  if (sessionDate === today && startTime <= nowTimeInAppTz()) {
     throw badRequest('That start time has already passed today. Pick a later time.');
   }
-  if (session_date > addDays(today, MAX_ADVANCE_DAYS)) {
+  if (sessionDate > addDays(today, MAX_ADVANCE_DAYS)) {
     throw badRequest(`Sessions can be booked at most ${MAX_ADVANCE_DAYS} days in advance.`);
   }
 
-  const dayName = weekdayName(session_date);
-  const slot = findCoveringSlot(tutor.id, dayName, preferred_start_time);
+  const dayName = weekdayName(sessionDate);
+  const slot = findCoveringSlot(tutorId, dayName, startTime);
   if (!slot) {
     throw badRequest('That time is not within the tutor\'s availability for a full 1-hour session.');
   }
 
-  const startMins = timeToMinutes(preferred_start_time);
-  const endMins = startMins + APPOINTMENT_MINUTES;
-  const preferred_end_time = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+  assertCourseTaughtByTutor(tutorId, courseId);
+
+  const endTime = endTimeFor(startTime);
+  assertNoTutorConflict({ tutorId, sessionDate, startTime, endTime, excludeBookingId });
+  assertNoStudentConflict({ studentEmail, sessionDate, startTime, endTime, excludeBookingId });
+
+  return { tutor, slot, dayName, endTime };
+}
+
+// Map a unique-index violation onto the rule it actually represents.
+function translateUniqueViolation(err) {
+  const message = String(err?.message || '');
+  if (message.includes('ux_bookings_student_live_slot')) {
+    return conflict('You already have another appointment during that time.');
+  }
+  return conflict('That time slot has just been booked by someone else.');
+}
+
+export function createBooking({ tutor, student, payload }) {
+  const { session_date, preferred_start_time } = payload;
 
   const insert = db.transaction(() => {
-    // Overlap, not just an identical start: availability windows can be
-    // defined off the hour, so two sessions could otherwise collide partially.
-    const existing = db
-      .prepare(`SELECT id FROM bookings
-        WHERE tutor_id = ? AND session_date = ?
-        AND preferred_start_time < ? AND preferred_end_time > ?
-        AND status IN ('pending', 'confirmed')`)
-      .get(tutor.id, session_date, preferred_end_time, preferred_start_time);
-    if (existing) throw conflict('That time slot has just been booked by someone else.');
+    // Validated inside the transaction so a competing booking committed a
+    // moment ago is visible to these checks.
+    const { slot, dayName, endTime } = validateBookingIsSchedulable({
+      tutorId: tutor.id,
+      studentEmail: student.email,
+      sessionDate: session_date,
+      startTime: preferred_start_time,
+      courseId: payload.course_id || null,
+    });
 
     const id = newId();
     db.prepare(`INSERT INTO bookings
@@ -92,7 +157,7 @@ export function createBooking({ tutor, student, payload }) {
         session_date,
         preferred_day: dayName,
         preferred_start_time,
-        preferred_end_time,
+        preferred_end_time: endTime,
         slot_id: slot.id,
         meeting_type: payload.meeting_type === 'In-Person' ? 'In-Person' : 'Online',
       });
@@ -103,9 +168,7 @@ export function createBooking({ tutor, student, payload }) {
   try {
     bookingId = insert();
   } catch (err) {
-    if (err?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-      throw conflict('That time slot has just been booked by someone else.');
-    }
+    if (err?.code === 'SQLITE_CONSTRAINT_UNIQUE') throw translateUniqueViolation(err);
     throw err;
   }
   return db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
@@ -121,16 +184,21 @@ const TRANSITIONS = {
     pending: ['cancelled'],
     confirmed: ['cancelled'],
   },
-  // Managers are the escape hatch for every situation the student and tutor
-  // flows cannot resolve, so any status is reachable; the caller still runs
-  // the double-booking check before reviving a booking into a live status.
-  manager: Object.fromEntries(
-    ['pending', 'confirmed', 'declined', 'cancelled', 'completed'].map((from) => [
-      from,
-      ['pending', 'confirmed', 'declined', 'cancelled', 'completed'].filter((to) => to !== from),
-    ])
-  ),
+  // Managers resolve what the student and tutor flows cannot. Reviving a
+  // dead booking into a live status is allowed but revalidated against every
+  // scheduling rule; a completed session is history and is not revivable
+  // without an explicit super admin override.
+  manager: {
+    pending: ['confirmed', 'declined', 'cancelled', 'completed'],
+    confirmed: ['pending', 'declined', 'cancelled', 'completed'],
+    declined: ['pending', 'confirmed', 'cancelled'],
+    cancelled: ['pending', 'confirmed', 'declined'],
+    completed: [],
+  },
 };
+
+const isRevival = (fromStatus, toStatus) =>
+  !LIVE_STATUSES.includes(fromStatus) && LIVE_STATUSES.includes(toStatus);
 
 export function transitionBooking({ bookingId, actor, nextStatus }) {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
@@ -138,9 +206,67 @@ export function transitionBooking({ bookingId, actor, nextStatus }) {
 
   const allowed = TRANSITIONS[actor]?.[booking.status] || [];
   if (!allowed.includes(nextStatus)) {
+    if (booking.status === 'completed' && LIVE_STATUSES.includes(nextStatus)) {
+      throw badRequest(
+        'A completed session cannot be reopened. A super admin can force it through the override endpoint with a reason.'
+      );
+    }
     throw badRequest(`Cannot change a ${booking.status} booking to ${nextStatus}.`);
   }
 
+  const apply = db.transaction(() => {
+    // Bringing a booking back to life means it has to satisfy every rule a
+    // new booking would, not just the tutor slot check.
+    if (isRevival(booking.status, nextStatus)) {
+      validateBookingIsSchedulable({
+        tutorId: booking.tutor_id,
+        studentEmail: booking.student_email,
+        sessionDate: booking.session_date,
+        startTime: booking.preferred_start_time,
+        courseId: booking.course_id,
+        excludeBookingId: booking.id,
+      });
+    }
+    writeStatus(booking, nextStatus);
+  });
+
+  try {
+    apply();
+  } catch (err) {
+    if (err?.code === 'SQLITE_CONSTRAINT_UNIQUE') throw translateUniqueViolation(err);
+    throw err;
+  }
+  return db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
+}
+
+// Deliberate, audited bypass of the scheduling rules. Reserved for super
+// admins; the database uniqueness guards still apply.
+export function overrideBookingStatus({ bookingId, nextStatus, actor, reason }) {
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
+  if (!booking) throw notFound('Booking not found');
+  if (booking.status === nextStatus) throw badRequest(`That booking is already ${nextStatus}.`);
+
+  const apply = db.transaction(() => {
+    writeStatus(booking, nextStatus);
+    db.prepare(`INSERT INTO admin_overrides
+        (id, actor_user_id, actor_email, action, target_type, target_id, reason, details)
+        VALUES (?, ?, ?, 'booking.status_override', 'booking', ?, ?, ?)`)
+      .run(
+        newId(), actor.id, actor.email, booking.id, reason,
+        JSON.stringify({ from: booking.status, to: nextStatus, session_date: booking.session_date })
+      );
+  });
+
+  try {
+    apply();
+  } catch (err) {
+    if (err?.code === 'SQLITE_CONSTRAINT_UNIQUE') throw translateUniqueViolation(err);
+    throw err;
+  }
+  return db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
+}
+
+function writeStatus(booking, nextStatus) {
   // Audit stamps: keep the first one recorded for a given outcome, and record
   // it whichever actor performed the change.
   const stamps = {};
@@ -153,10 +279,9 @@ export function transitionBooking({ bookingId, actor, nextStatus }) {
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     WHERE id = @id`)
     .run({
-      id: bookingId,
+      id: booking.id,
       status: nextStatus,
       cancelled_at: stamps.cancelled_at || null,
       declined_at: stamps.declined_at || null,
     });
-  return db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId);
 }

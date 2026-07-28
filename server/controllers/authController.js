@@ -4,6 +4,7 @@ import db from '../db/database.js';
 import { newId, newSessionToken, hashToken } from '../lib/ids.js';
 import { serializeRow } from '../lib/serialize.js';
 import { SESSION_COOKIE, SESSION_TTL_MS, loadLinkedProfiles } from '../middleware/auth.js';
+import { cookieOptions, clearCookieOptions } from '../lib/config.js';
 import { badRequest, unauthorized, conflict } from '../middleware/errors.js';
 
 const credentialsSchema = z.object({
@@ -26,13 +27,7 @@ function startSession(res, userId) {
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
   db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
     .run(hashToken(token), userId, expiresAt);
-  res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    signed: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: SESSION_TTL_MS,
-  });
+  res.cookie(SESSION_COOKIE, token, { ...cookieOptions(), maxAge: SESSION_TTL_MS });
 }
 
 function mePayload(req) {
@@ -115,11 +110,13 @@ export function login(req, res) {
 }
 
 export function logout(req, res) {
-  const token = req.signedCookies?.[SESSION_COOKIE] || req.cookies?.[SESSION_COOKIE];
+  // Signed cookie only, matching how the session is read everywhere else.
+  const token = req.signedCookies?.[SESSION_COOKIE];
   if (token) {
     db.prepare('DELETE FROM sessions WHERE id = ?').run(hashToken(token));
   }
-  res.clearCookie(SESSION_COOKIE);
+  // Clearing only works when the attributes match the ones used to set it.
+  res.clearCookie(SESSION_COOKIE, clearCookieOptions());
   res.json({ ok: true });
 }
 

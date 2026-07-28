@@ -2,8 +2,8 @@ import { z } from 'zod';
 import db from '../db/database.js';
 import { serializeRow, serializeRows } from '../lib/serialize.js';
 import { isManager } from '../middleware/auth.js';
-import { badRequest, forbidden, notFound } from '../middleware/errors.js';
-import { createBooking, transitionBooking, LIVE_STATUSES } from '../services/bookingService.js';
+import { forbidden, notFound } from '../middleware/errors.js';
+import { createBooking, transitionBooking, overrideBookingStatus } from '../services/bookingService.js';
 import { notifyBookingEvent } from '../services/notificationService.js';
 
 function tutorFor(booking) {
@@ -123,19 +123,9 @@ export function managerUpdate(req, res) {
   }
 
   if (data.status && data.status !== booking.status) {
-    // Reviving a booking into a live status must not resurrect a conflict
-    // with whoever took the freed slot.
-    if (LIVE_STATUSES.includes(data.status)) {
-      const clash = db.prepare(`SELECT id FROM bookings
-          WHERE tutor_id = ? AND session_date = ?
-          AND preferred_start_time < ? AND preferred_end_time > ?
-          AND status IN ('pending', 'confirmed') AND id != ?`)
-        .get(booking.tutor_id, booking.session_date, booking.preferred_end_time,
-          booking.preferred_start_time, booking.id);
-      if (clash) throw badRequest('Another live booking already occupies that slot.');
-    }
-    // Route through the same state machine as everyone else so the allowed
-    // moves and the cancelled_at / declined_at stamps stay consistent.
+    // Route through the same state machine as everyone else: it revalidates
+    // date, availability, tutor approval, and both tutor and student
+    // conflicts whenever a dead booking is brought back to life.
     const updated = transitionBooking({ bookingId: booking.id, actor: 'manager', nextStatus: data.status });
     const t = tutorFor(updated);
     const eventByStatus = { confirmed: 'booking.confirmed', declined: 'booking.declined', cancelled: 'booking.cancelled' };
@@ -145,6 +135,28 @@ export function managerUpdate(req, res) {
   }
 
   res.json(serializeRow(db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id)));
+}
+
+// Explicit, audited escape hatch for the rare case a super admin must force a
+// booking into a state the scheduler forbids (for example reopening a session
+// marked completed by mistake). Requires a written reason.
+const overrideSchema = z.object({
+  status: z.enum(['pending', 'confirmed', 'declined', 'cancelled', 'completed']),
+  reason: z.string().trim().min(10, 'Explain why this override is needed (at least 10 characters).').max(1000),
+});
+
+export function overrideStatus(req, res) {
+  const data = overrideSchema.parse(req.body);
+  const updated = overrideBookingStatus({
+    bookingId: req.params.id,
+    nextStatus: data.status,
+    actor: req.user,
+    reason: data.reason,
+  });
+  console.warn(
+    `[override] ${req.user.email} forced booking ${updated.id} to ${data.status}. Reason: ${data.reason}`
+  );
+  res.json(serializeRow(updated));
 }
 
 export function remove(req, res) {
