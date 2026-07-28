@@ -34,6 +34,9 @@ state of the move off the previous hosted backend are in
 | `npm run db:migrate` | Apply pending SQL migrations |
 | `npm run db:seed` | Reset application data and load demo records |
 | `npm run db:reset` | Delete the database file, then migrate and seed |
+| `npm run db:backup` | Timestamped copy of the local database |
+| `npm run db:restore -- <file> --confirm` | Replace the database from a backup |
+| `npm run data:export` | Portable JSON export of the business records |
 | `npm test` | Everything: lint, typecheck, build, API tests, browser tests on a temporary stack |
 | `npm run test:all` | Same as `npm test` |
 | `npm run test:api` | Automated backend test suite against a temporary database |

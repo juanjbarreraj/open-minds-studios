@@ -1396,6 +1396,66 @@ console.log('\n== Super admin tools ==');
     })).status === 403);
 }
 
+console.log('\n== Final privacy review ==');
+{
+  // No response anywhere may carry a credential.
+  const surfaces = [
+    ['auth/me', await student.get('/auth/me')],
+    ['students', await manager.get('/students')],
+    ['tutors (manager)', await manager.get('/tutors')],
+    ['tutors (student)', await student.get('/tutors')],
+    ['bookings', await manager.get('/bookings')],
+    ['modules', await manager.get('/modules')],
+    ['inquiries', await manager.get('/inquiries')],
+    ['invitations', await manager.get('/invitations')],
+    ['progress', await student.get('/progress')],
+  ];
+  const leaks = surfaces.filter(([, res]) => {
+    const body = JSON.stringify(res.data || '');
+    return /password_hash|token_hash|oms_session|SESSION_SECRET/.test(body);
+  }).map(([name]) => name);
+  check('no endpoint returns a password hash, token hash, or session value',
+    leaks.length === 0, leaks.join(', '));
+
+  // Identity always comes from the session, never from the request body.
+  const spoofedBooking = await student.post('/bookings', {
+    tutor_id: tutorId, session_date: nextDateForWeekday(addDays(monday, 21), 'Monday'),
+    preferred_start_time: '15:00', student_id: 'someone-else', student_email: 'victim@demo.local',
+  });
+  check('booking ignores a client-supplied student identity',
+    spoofedBooking.status === 201 && spoofedBooking.data.student_email === 'student@demo.local',
+    JSON.stringify(spoofedBooking.data?.student_email));
+
+  // A student cannot read another student's things through any route.
+  const students = await manager.get('/students');
+  const otherStudent = students.data.find((s) => s.email === 'second@demo.local');
+  check('a student cannot read another student\'s progress',
+    (await student.get(`/progress/${otherStudent.id}`)).status === 403);
+  const foreignModules = (await student.get('/modules')).data;
+  check('module list is scoped to the signed-in student',
+    foreignModules.every((m) => m.student_email.toLowerCase() === 'student@demo.local'));
+  const foreignBookings = (await student.get('/bookings')).data;
+  check('booking list is scoped to the signed-in student',
+    foreignBookings.every((b) => b.student_email.toLowerCase() === 'student@demo.local'));
+
+  // Tutor contact details stay out of the student-facing directory.
+  const directory = await student.get('/tutors');
+  check('student-facing tutor directory carries no contact details',
+    directory.data.every((t) => t.email === undefined && t.phone === undefined));
+
+  // Rate limiting still guards the public surfaces.
+  const { rateLimits } = await import('../lib/config.js');
+  check('login, registration, and inquiries all have limits',
+    rateLimits.login.max > 0 && rateLimits.register.max > 0 && rateLimits.inquiry.max > 0);
+
+  // Session cookie remains HTTP-only and signed.
+  const freshLogin = await client().post('/auth/login', { email: 'tutor@demo.local', password: 'tutor123' });
+  const setCookie = freshLogin.headers.get('set-cookie') || '';
+  check('the session cookie is HttpOnly', /HttpOnly/i.test(setCookie), setCookie.slice(0, 120));
+  check('the session cookie is signed', /oms_session=s%3A|oms_session=s:/.test(setCookie), setCookie.slice(0, 120));
+  check('the session cookie declares SameSite', /SameSite/i.test(setCookie), setCookie.slice(0, 120));
+}
+
 console.log('\n== Logout ==');
 {
   const out = await student.post('/auth/logout');

@@ -80,7 +80,7 @@ inserting demo data. Migrations are plain SQL files in
 Tables: `users`, `sessions`, `students`, `tutors`, `courses`, `tutor_courses`,
 `availability_slots`, `bookings`, `files`, `modules`, `inquiries`,
 `notification_outbox`, `student_progress_metrics`, `student_focus`,
-`admin_overrides`.
+`admin_overrides`, `module_grade_revisions`, `invitations`.
 
 Migrations are additive and ordered; earlier ones are never edited:
 
@@ -91,6 +91,10 @@ Migrations are additive and ordered; earlier ones are never edited:
 | `003_security_and_integrity.sql` | Student double-booking index, one profile per account, `admin_overrides` |
 | `004_student_progress.sql` | `student_progress_metrics`, `student_focus` |
 | `005_inquiry_workflow.sql` | Inquiry `status`, `manager_notes`, `updated_at` |
+| `006_cancellation_details.sql` | Booking `cancelled_by`, `cancellation_reason` |
+| `007_grade_revisions.sql` | `module_grade_revisions` |
+| `008_invitations.sql` | `invitations` (hashed tokens) |
+| `009_booking_utc_instants.sql` | Booking `starts_at_utc`, `ends_at_utc` |
 
 Deleting a tutor is restricted at the database level when appointments or
 modules reference them, so student history cannot be destroyed by a single
@@ -111,7 +115,10 @@ delete. Managers turn off approval instead.
 
 The seed also creates three courses, four availability windows (including a
 Monday 9:00 to 17:00 window used by the scheduling tests), two bookings for the
-demo student, one assigned module, and one sample inquiry.
+demo student, one assigned module, demo progress metrics and a focus item, two
+sample inquiries (one `new`, one `contacted`), and one approved student profile
+with no portal account (`riley.invite@demo.local`) so the invitation flow has
+something to invite.
 
 ## 6. Running the app
 
@@ -145,13 +152,42 @@ Deletes the SQLite file (and its WAL/SHM siblings), re-applies migrations, and
 re-seeds. Uploaded files are not removed by this command; clear them with
 `rm -rf server/uploads/*` if you want a completely clean slate.
 
+### Backups, restore, and export
+
+```bash
+npm run db:backup                                   # timestamped copy
+npm run db:restore -- <backup-file> --confirm       # replace the database
+npm run data:export                                 # portable JSON of the records
+```
+
+**Backup** writes a timestamped copy to `server/backups/` (override with
+`BACKUP_DIR`), outside the active database directory, and never overwrites an
+existing file. It uses SQLite's own backup API, so the copy is transactionally
+consistent: **the development server does not need to be stopped.**
+
+**Restore** requires an explicit path and `--confirm`. Before replacing
+anything it verifies that the file is a readable SQLite database with this
+application's tables, then takes an automatic `pre-restore` backup of the
+current database. Without `--confirm` it refuses and prints the exact command
+to re-run. Restart the API server afterwards so it reopens the restored file.
+
+**Export** writes JSON to `server/exports/` (override with `EXPORT_DIR`)
+covering students, tutors, courses, tutor-course assignments, availability,
+bookings, modules, grade revisions, inquiries, progress metrics and focus, the
+notification outbox, and the admin override log. It lists columns explicitly
+rather than dumping tables, so password hashes, sessions, and invitation token
+hashes cannot leak into an export even if a column is added later.
+
+`server/backups/` and `server/exports/` are git-ignored. A backup contains
+password hashes: treat it like a credential store and never commit one.
+
 ## 8. Testing roles
 
 ```bash
 npm test           # everything: lint, typecheck, build, API, browser
 npm run test:all   # same as npm test
-npm run test:api   # 184 backend checks, temporary database, no dev stack needed
-npm run test:ui    # 55 browser checks, requires `npm run dev` running
+npm run test:api   # 275 backend checks, temporary database, no dev stack needed
+npm run test:ui    # 72 browser checks, requires `npm run dev` running
 ```
 
 `npm test` is self-contained: it runs lint, typecheck, and build, then the API
@@ -203,6 +239,33 @@ emails, phone numbers, and assignment text never leave the server for someone
 else's booking. The student-facing tutor directory lists names and bios only:
 staff email addresses are visible to managers, not to every account.
 
+### Time zones and daylight saving
+
+The business time zone is `America/New_York`, and that is what every screen
+shows. Conversion is handled by Luxon rather than manual date arithmetic,
+because two hours a year do not behave the way naive math assumes.
+
+- **Storage.** Each appointment stores its Eastern Time wall clock
+  (`session_date`, `preferred_start_time`, `preferred_end_time`, which is what
+  availability windows are defined in and what the UI displays) *and* the real
+  instants `starts_at_utc` / `ends_at_utc`. The UTC pair is what anchors a
+  session to an actual moment.
+- **Spring forward.** On the March transition the clock jumps 02:00 to 03:00,
+  so times in that gap never happen. A booking at a nonexistent time is
+  **rejected** with an explanation, rather than silently sliding to 03:00.
+- **Fall back.** On the November transition 01:00 to 02:00 happens twice. The
+  application resolves such a time **deterministically to the first
+  occurrence** (still daylight time) and records the resulting UTC instant, so
+  a booking is never ambiguous once stored. It is not rejected, because the
+  hour is a legitimate business hour.
+- **Duration.** The 60-minute rule is 60 *real* minutes: the end instant is the
+  start instant plus an hour, computed on the timeline rather than on the wall
+  clock. On a transition day the displayed end time can therefore differ from
+  start + 1 hour on the clock, which is correct.
+- **Navigation.** Day and week arithmetic is calendar arithmetic in the app
+  time zone, so seven-day navigation lands on the same weekday and the 30-day
+  limit stays exact across both transitions.
+
 ### Role and linking rules
 
 A portal account and a profile are separate records, joined by an explicit
@@ -241,6 +304,100 @@ Progress is real data, not dashboard decoration:
 - A tutor may only maintain progress for students they actually work with, that
   is someone with a booking or a module from them.
 
+### Appointment lifecycle
+
+The state machine lives in one place, `CANONICAL_TRANSITIONS` in
+`server/services/bookingService.js`:
+
+```
+pending    -> confirmed | declined | cancelled
+confirmed  -> cancelled | completed
+declined   -> (final)
+cancelled  -> (final)
+completed  -> (final)
+```
+
+Each actor gets a subset. A student cancels their own pending or confirmed
+session. A tutor confirms, declines, completes, and cancels their own
+confirmed session. A manager may make any canonical move. Nothing brings a
+terminal appointment back to life through the normal flow, including for
+managers; that is what the super admin override is for.
+
+### Tutor cancellation
+
+A tutor who cannot attend releases the session themselves from the tutor
+dashboard, on any confirmed appointment that has not started yet. A reason is
+required, and it goes to the student:
+
+- The booking becomes `cancelled` with `cancelled_by = 'tutor'`, the reason,
+  and a timestamp.
+- The time is immediately bookable again.
+- It leaves the active student and tutor lists and appears in the student's
+  session history with the tutor's reason, and in the manager's Bookings tab.
+- A `booking.cancelled_by_tutor` message is written to the notification outbox
+  addressed to the student. Nothing is emailed; see the notifications section.
+
+A tutor cannot cancel another tutor's appointment (403), a completed one, or
+one that has already started. Those are manager territory.
+
+### Grade corrections
+
+Grading is no longer terminal. On the tutor dashboard, module review has an
+**Awaiting grading** tab and a **Graded** tab; a graded module offers
+**Correct this grade** and **Grade history**.
+
+- A correction reason is required.
+- The module row always holds the current grade and feedback.
+- `module_grade_revisions` holds every value the grade has ever had, including
+  the first one, in chronological order with who changed it and why.
+- A tutor may correct grades on modules they assigned; a manager may correct
+  any; students are read-only.
+- A student can see their own history, including that a grade was corrected
+  and when, but not the internal correction reason or who made it.
+
+### Invitations
+
+Because no email provider is connected, invitations are local links rather than
+emails. In the manager dashboard, **Invitations**:
+
+1. Create an invitation for an unlinked student or tutor profile.
+2. Copy the link that appears once, for example
+   `http://localhost:5173/register?invite=<token>`.
+3. Pass it to the person however you normally reach them.
+
+The token is shown exactly once, at creation. Only a SHA-256 hash is stored, so
+the database never holds anything replayable, and the raw value is never
+logged or included in any listing. An invitation:
+
+- expires (14 days by default, configurable per invitation),
+- works once, then is marked accepted,
+- can be revoked while unused,
+- must match the intended account type and, when the profile has an email, that
+  address,
+- is refused when altered, expired, revoked, already used, or when the profile
+  has since been linked,
+- can never be issued for a manager or super admin profile, so it cannot
+  become a route to elevated access.
+
+Registering through the link creates the account already linked to the intended
+profile, so the family or tutor keeps whatever approval the manager had already
+set. The manual **Link** button remains as a fallback.
+
+### Super admin tools
+
+Super admins get an extra **Admin Tools** tab. Regular managers never see it,
+and the API refuses them regardless of what the browser sends.
+
+- **Force an appointment status** performs a move the lifecycle forbids, for
+  example reopening a session marked completed by mistake. A reason of at
+  least 10 characters is required and the action is written to
+  `admin_overrides` with the actor, the reason, and the before and after
+  status.
+- **Unreferenced uploads** scans for files no module points at, shows the count,
+  the total size, and each file, and requires a separate confirmation before
+  deleting. Files attached to a module are never listed and never removed. Who
+  ran the cleanup and what it covered is recorded in `admin_overrides`.
+
 ### Inquiry management
 
 The manager dashboard has an **Inquiries** tab listing every contact-form
@@ -276,11 +433,13 @@ seam where a real provider gets implemented later.
   terminal.
 - **No Google Sheets sync.** `server/services/inquiryIntegrationService.js`
   logs the exact payload it would send and is the single place to implement it.
-- **No payments.** Stripe packages remain in `package.json` from the original
-  scaffold but nothing in the app calls them.
-- **No password reset or email verification.** Managers create and approve
-  accounts; there is no self-service recovery flow yet. This is also why
-  registration never adopts an approved profile on its own (see below).
+- **No payments.** There is no payment code and no payment dependency: the
+  unused Stripe packages from the original scaffold have been removed.
+- **No password reset.** Managers create and approve accounts; there is no
+  self-service recovery flow yet.
+- **No email verification.** Invitation links stand in for it: a manager vouches
+  for who should hold a profile. Registration without an invitation still never
+  adopts an approved profile on its own (see below).
 - **Profiles link to accounts explicitly.** Registering with the same email as
   a manager-created profile does not inherit that profile when it is approved
   or has manager or super admin flags, because nothing proves the registrant
@@ -296,24 +455,23 @@ seam where a real provider gets implemented later.
   email and password only. The `auth_provider` column is preserved for when a
   provider is added back.
 - **Rate limiting and CAPTCHA are absent** on the public inquiry endpoint.
-- **Daylight saving edge cases are not modeled.** Times are Eastern Time
-  wall-clock strings, so the hour that does not exist on the spring-forward
-  Sunday (and the repeated hour in autumn) is not specially handled.
-- **A tutor cannot release a session they already confirmed.** The tutor UI
-  offers accept and decline only while a request is pending; a manager changes
-  a confirmed booking from the Bookings tab.
-- **A grade cannot be corrected once submitted.** Grading moves a module to
-  `graded`, which is terminal, and the review queue only lists submitted work.
+- **Bookings made before this release have no UTC instants.** `starts_at_utc`
+  is null on those rows and the code falls back to the Eastern Time wall clock,
+  which is correct except in the two transition hours. New bookings always
+  store both.
+- **A repeated fall-back hour is resolved, not surfaced.** The first occurrence
+  is chosen automatically; nobody is asked which one they meant.
 - **Rate limits are per process and in memory.** They reset when the server
   restarts and are not shared across processes; a clustered deployment needs a
   shared store.
-- **Reopening a completed session needs an override.** Managers cannot revive
-  one normally. A super admin can `POST /api/bookings/:id/override-status`
-  with a written reason, which is recorded in `admin_overrides`. There is no
-  UI for this yet; it is deliberately an API-level action.
-- **Orphan upload cleanup is manual.** `POST /api/maintenance/orphan-files`
-  (super admin) removes upload records and blobs that no module references.
-  Nothing runs it on a schedule.
+- **Terminal appointments need an override to change.** Declined, cancelled,
+  and completed are final in the normal flow, for managers too. A super admin
+  can force a status from Admin Tools with a written reason, recorded in
+  `admin_overrides`.
+- **Orphan upload cleanup is manual.** The Admin Tools tab scans and deletes on
+  demand. Nothing runs it on a schedule.
+- **Backups are manual.** `npm run db:backup` is run by hand; there is no
+  scheduled job and no offsite copy.
 - **Progress metrics are free-text label and value pairs.** There are no charts
   or trend analytics, by design for this pass.
 - **Tutors with history cannot be deleted.** Deleting would take student

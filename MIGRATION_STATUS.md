@@ -231,14 +231,67 @@ visible to two unrelated students, and a file readable by both.
 `003_security_and_integrity.sql`, `004_student_progress.sql`, and
 `005_inquiry_workflow.sql`. Migrations 001 and 002 were not modified.
 
+## Final local product-completeness pass
+
+The last pass before production deployment planning. It closed the functional
+gaps the hardening passes had documented as limitations, replaced the manual
+account-linking step, and added the operational commands the application now
+warrants. Still no hosted service: React/Vite, Express, SQLite, local uploads,
+notification outbox.
+
+### Features added
+
+| Feature | What it does |
+|---|---|
+| Tutor cancellation | A tutor releases their own future confirmed session with a required reason. The booking keeps `cancelled_by`, `cancellation_reason`, and `cancelled_at`; the slot frees immediately; the student is notified through the outbox and sees the reason in their session history; managers keep the record. |
+| Grade corrections | Grading is no longer terminal. `module_grade_revisions` preserves every value a grade has held, starting with the first one. A reason is required. Staff see the full history with author and reason; students see that a grade changed and when, but not the internal reason. |
+| DST-safe time handling | Luxon replaces manual date arithmetic. Appointments store UTC instants alongside the Eastern Time wall clock. Nonexistent spring-forward times are rejected; repeated fall-back hours resolve deterministically to the first occurrence; 60 minutes means 60 real minutes. |
+| Local invitations | Managers issue one-time links (`/register?invite=<token>`) tied to a role, profile, and email. Only a SHA-256 hash is stored, the raw token is shown once and never logged, and registration through the link performs the profile link automatically. Expiry, revocation, reuse, alteration, and role or email mismatch are all rejected, and elevated profiles can never be invited. |
+| Super-admin UI | The API-only booking override and orphan-file cleanup now have a guarded Admin Tools tab: the override requires a reason and is audited; the cleanup previews count, size, and file list, then requires confirmation, and never touches a file a module references. |
+| Backup, restore, export | `db:backup` (consistent copy, no downtime, never overwrites), `db:restore` (verifies the file, auto-backs-up first, demands `--confirm`), `data:export` (portable JSON with credentials excluded by construction). |
+
+### Defects fixed
+
+| Defect | Fix |
+|---|---|
+| A tutor could not release a confirmed session at all | Tutor cancellation workflow, restricted to their own future confirmed appointments |
+| A grade was permanently wrong once submitted | Correction workflow with full audit history |
+| The spring-forward gap and the fall-back repeat were unmodeled, so a booking could be stored against a time that never happened | Rejected and resolved respectively, with UTC instants stored |
+| Managers could revive declined, cancelled, and completed appointments, which the state machine was never meant to allow | Terminal states are terminal for every actor; the audited super-admin override is the only way past |
+| Pre-approved profiles needed a manual manager link after registration | Invitation links do it automatically, with the manual link retained as a fallback |
+| 18 unused packages, including Stripe, shipped in `package.json` | Audited and removed |
+
+### Dependency audit
+
+Every package was checked for a real import or a script or config reference.
+Removed: `@stripe/react-stripe-js`, `@stripe/stripe-js`, `@hello-pangea/dnd`,
+`@hookform/resolvers`, `@radix-ui/react-toast`, `canvas-confetti`, `date-fns`,
+`html2canvas`, `jspdf`, `lodash`, `moment`, `react-hot-toast`, `react-leaflet`,
+`react-markdown`, `react-quill`, `three`, `baseline-browser-mapping`,
+`eslint-plugin-react-refresh`.
+
+Retained despite having no direct import, because the toolchain needs them:
+`postcss` and `autoprefixer` (referenced by `postcss.config.js` and Vite's CSS
+pipeline), `concurrently` (used by the `dev` script), `eslint`, `typescript`,
+and `@types/node`, `@types/react`, `@types/react-dom` (used by the `lint` and
+`typecheck` scripts). Added: `luxon`.
+
+### Migrations added
+
+`006_cancellation_details.sql`, `007_grade_revisions.sql`,
+`008_invitations.sql`, `009_booking_utc_instants.sql`. Migrations 001 to 005
+were not modified.
+
 ## Verification summary
 
 | Check | Result |
 |---|---|
+| `npm install` | Succeeds |
+| `npm run db:reset` | Applies all nine migrations and seeds |
 | `npm run build` | Succeeds; `dist/` contains no Base44 reference |
 | `npm run lint` | Clean (baseline had 18 errors) |
 | `npm run typecheck` | Clean (baseline had 15 errors) |
-| `npm run test:api` | 184 passed, 0 failed |
-| `npm run test:ui` | 55 passed, 0 failed, 0 console errors |
+| `npm run test:api` | 275 passed, 0 failed |
+| `npm run test:ui` | 72 passed, 0 failed, 0 console errors |
 | `npm test` / `npm run test:all` | Passes end to end on a temporary stack |
 | Network requests to any Base44 host during a full browser session | zero |
