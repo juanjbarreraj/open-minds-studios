@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, Mail, MapPin, Loader2, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { inquiriesApi } from '@/api/inquiriesApi';
+import { submitInquiry } from '@/api/inquirySubmit';
 import SiteHeader from '../components/landing/SiteHeader';
 import SiteFooter from '../components/landing/SiteFooter';
 
@@ -36,16 +36,7 @@ export default function Contact() {
     setSending(true);
     setError('');
     try {
-      const inquiry = {
-        parent_name: form.parentName,
-        email: form.email,
-        student_grade: form.grade,
-        subject_or_exam: form.subject,
-        goals: form.goal,
-        message: form.details,
-        interested_program: form.interestedProgram,
-      };
-      await inquiriesApi.create(inquiry);
+      await submitInquiry(form);
       setSent(true);
     } catch (err) {
       setError('Something went wrong. Please try again.');

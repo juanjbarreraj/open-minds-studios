@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Inquiry form endpoint</title>
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <!--
+      This file exists so Netlify can discover the consultation form.
+
+      Netlify detects forms by parsing deployed HTML at BUILD time. The real
+      form is rendered by React in src/pages/Contact.jsx, so it is not present
+      in any static file and would never be detected. Declaring the fields here
+      solves that.
+
+      Why a separate file rather than index.html: netlify.toml rewrites every
+      unmatched path to index.html with status 200. A POST caught by that rule
+      would come back as the app shell with a 200, which a client cannot tell
+      apart from success. Netlify serves real files ahead of non-forced redirect
+      rules, so posting to this actual file bypasses the rewrite entirely.
+
+      Field names must stay in sync with src/api/inquirySubmit.js.
+    -->
+    <form name="inquiry" netlify netlify-honeypot="bot-field" hidden>
+      <input type="text" name="parentName" />
+      <input type="email" name="email" />
+      <input type="text" name="grade" />
+      <input type="text" name="subject" />
+      <input type="text" name="interestedProgram" />
+      <input type="text" name="goal" />
+      <textarea name="details"></textarea>
+      <input type="text" name="bot-field" />
+    </form>
+  </body>
+</html>
