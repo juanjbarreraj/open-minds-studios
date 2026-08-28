@@ -7,10 +7,13 @@
   </head>
   <body>
     <!--
-      Netlify redirects here after a successful form submission. Visitors never
-      see it: the contact page submits with fetch and shows its own confirmation.
-      Its only job is to be a page that is unmistakably NOT the app shell, so the
-      client can verify the submission really reached Netlify Forms.
+      Netlify returns this page's contents after a successful form submission.
+      Visitors never see it: the contact page submits with fetch and renders its
+      own confirmation.
+
+      The data-inquiry-received attribute below is load-bearing. It is how
+      src/api/inquirySubmit.js distinguishes a real success from the
+      single-page-app shell being returned by a rewrite rule. Do not remove it.
     -->
     <p data-inquiry-received="true">Inquiry received.</p>
   </body>

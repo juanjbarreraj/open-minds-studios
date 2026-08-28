@@ -21,12 +21,14 @@
 //
 // Nothing else in the app needs to change.
 
-// Netlify processes form submissions posted to the site root. Posting directly
-// at the static declaration file instead returns 405, because the CDN serves
-// that path as an asset and never hands it to the form handler.
 const ENDPOINT = '/';
 const FORM_NAME = 'inquiry';
-const SUCCESS_PATH = '/forms/success.html';
+
+// Netlify answers a successful submission by REWRITING to the form's action —
+// status 200, response.redirected false, and response.url unchanged. Verified
+// against the live site. So the proof of success is in the response body, not
+// the URL: anything else here produces false failures on good submissions.
+const SUCCESS_MARKER = 'data-inquiry-received="true"';
 
 export async function submitInquiry(form) {
   const body = new URLSearchParams({
@@ -50,17 +52,12 @@ export async function submitInquiry(form) {
     throw new Error(`Inquiry submission failed (${res.status})`);
   }
 
-  // Confirm the submission actually reached Netlify Forms rather than being
-  // swallowed by the single-page-app rewrite, which would answer with the app
-  // shell and a 200 status. On success Netlify redirects to the form's action,
-  // and fetch follows that redirect, so the final URL is the tell.
-  //
-  // Checking for the success page rather than against the app shell matters:
-  // Netlify can legitimately return page HTML on success, so treating "looks
-  // like HTML" as failure would reject good submissions. Losing a parent's
-  // enquiry silently is the worst outcome here, but wrongly telling them it
-  // failed is a close second.
-  if (!res.url.includes(SUCCESS_PATH)) {
+  // Confirm the submission reached Netlify Forms rather than being swallowed by
+  // the single-page-app rewrite, which would also answer 200 but with the app
+  // shell. Losing a parent's enquiry while showing them a thank-you screen is
+  // the worst outcome available here, so this is worth the extra read.
+  const text = await res.text();
+  if (!text.includes(SUCCESS_MARKER)) {
     throw new Error('Inquiry submission did not reach Netlify Forms.');
   }
 }
