@@ -7,6 +7,7 @@
     "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite",
     "dev:server": "node --watch server/index.js",
+    "start": "node server/index.js",
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
@@ -14,6 +15,7 @@
     "preview": "vite preview",
     "db:migrate": "node server/db/migrate.js",
     "db:seed": "node server/db/seed.js",
+    "db:create-manager": "node server/db/createManager.js",
     "db:reset": "node server/db/reset.js",
     "db:backup": "node server/db/backup.js",
     "db:restore": "node server/db/restore.js",
@@ -99,5 +101,8 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2",
     "vite": "^6.1.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -1,0 +1,42 @@
+# Netlify configuration for the Open Minds Studios frontend.
+# The Express/SQLite API is deployed separately (see render.yaml) and reached
+# at https://api.openmindsstudios.com via VITE_API_BASE_URL.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# --- Redirects are evaluated top to bottom. The www rule MUST come before the
+# --- SPA catch-all, or the catch-all matches www requests first and the
+# --- canonical redirect never fires.
+
+# Canonical host: www -> apex. Forced because index.html exists at that path.
+[[redirects]]
+  from = "https://www.openmindsstudios.com/*"
+  to = "https://openmindsstudios.com/:splat"
+  status = 301
+  force = true
+
+# SPA fallback: any route that isn't a real file serves index.html, so deep
+# links and hard refreshes resolve instead of returning 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
+# Vite emits content-hashed filenames under /assets, so they cache immutably.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
