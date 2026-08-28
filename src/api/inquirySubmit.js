@@ -1,9 +1,9 @@
 // How a consultation enquiry leaves the browser.
 //
 // The Express API is not deployed yet, so enquiries go to Netlify Forms: no
-// backend required, free up to 100 submissions a month, and each submission is
-// emailed to whichever address is configured under Netlify -> Forms -> Form
-// notifications.
+// backend required, free up to 100 submissions a month, and each one is emailed
+// to the address configured under Netlify -> Project configuration ->
+// Notifications.
 //
 // The declaration Netlify parses at build time lives in public/forms/inquiry.html.
 // Field names here must match that file exactly.
@@ -21,8 +21,12 @@
 //
 // Nothing else in the app needs to change.
 
-const ENDPOINT = '/forms/inquiry.html';
+// Netlify processes form submissions posted to the site root. Posting directly
+// at the static declaration file instead returns 405, because the CDN serves
+// that path as an asset and never hands it to the form handler.
+const ENDPOINT = '/';
 const FORM_NAME = 'inquiry';
+const SUCCESS_PATH = '/forms/success.html';
 
 export async function submitInquiry(form) {
   const body = new URLSearchParams({
@@ -46,16 +50,17 @@ export async function submitInquiry(form) {
     throw new Error(`Inquiry submission failed (${res.status})`);
   }
 
-  // Guard against a silent false success. If a redirect rule ever swallows this
-  // POST, the reply is the single-page app shell with a 200 status, which the
-  // check above would happily accept while the enquiry went nowhere. Losing a
-  // parent's enquiry without anyone noticing is far worse than showing an error,
-  // so treat an app-shell response as a failure.
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('text/html')) {
-    const text = await res.text();
-    if (text.includes('id="root"')) {
-      throw new Error('Inquiry submission was intercepted by a redirect rule and did not reach Netlify Forms.');
-    }
+  // Confirm the submission actually reached Netlify Forms rather than being
+  // swallowed by the single-page-app rewrite, which would answer with the app
+  // shell and a 200 status. On success Netlify redirects to the form's action,
+  // and fetch follows that redirect, so the final URL is the tell.
+  //
+  // Checking for the success page rather than against the app shell matters:
+  // Netlify can legitimately return page HTML on success, so treating "looks
+  // like HTML" as failure would reject good submissions. Losing a parent's
+  // enquiry silently is the worst outcome here, but wrongly telling them it
+  // failed is a close second.
+  if (!res.url.includes(SUCCESS_PATH)) {
+    throw new Error('Inquiry submission did not reach Netlify Forms.');
   }
 }
