@@ -9,16 +9,35 @@ Blocked on: a Render account, and the Namecheap login for step 3.
 ## 1. Provision the blueprint
 
 Render dashboard → **New** → **Blueprint** → connect
-`juanjbarreraj/open-minds-studios` → branch **`migration/remove-base44`**
-(pushed and in sync at `6719e03`; `main` is 20 commits behind and must not be
-used).
+`juanjbarreraj/open-minds-studios` → branch **`migration/remove-base44`**.
+
+Confirm the remote actually has what you expect before provisioning — check
+the remote, not the local log, because a local commit that has not been pushed
+will not appear to Render:
+
+```bash
+git ls-remote --heads origin
+```
+
+`main` is the pre-migration Base44 baseline (`c28485e`) and is **not pushed at
+all**, so it should not appear in Render's branch list. If it ever is pushed,
+do not select it.
 
 Render reads `render.yaml` and creates `openminds-api` with a 1 GB disk at
 `/var/data`. Confirm before applying:
 
+- **Region is `virginia`** and matches `render.yaml`. This is **permanent** —
+  Render cannot move a service between regions, only recreate it. Oregon is the
+  default when the key is absent, which would put ~75ms of latency between the
+  studio's Pittsburgh families and the API instead of ~20ms.
 - Plan is **Starter**, not Free. Free instances sleep and cold-start ~30s on
   the login page.
-- `SESSION_SECRET` shows as *generated* — never paste one in.
+- `SESSION_SECRET` shows as *generated* — never paste one in. Note the
+  consequence: the value lives with the service, so tearing the service down
+  and recreating it mints a **new** secret and invalidates every existing
+  session cookie. Everyone is silently logged out and has to sign in again.
+  Not a bug, but do not recreate the service casually once families are using
+  it, and expect support questions if you do.
 - Disk mount path is `/var/data`, matching `DATABASE_PATH`, `UPLOADS_DIR`,
   `BACKUP_DIR`, and `EXPORT_DIR`.
 
@@ -32,8 +51,23 @@ curl -s https://openminds-api.onrender.com/api/health
 # expect: {"ok":true}
 ```
 
-If this fails, read the deploy log before changing anything. The most likely
-cause is `better-sqlite3` failing to build its native binding under `npm ci`.
+If this fails, read the deploy log before changing anything.
+
+**The most likely failure, and it will not look like one.** `better-sqlite3`
+(13.0.1) compiles a native binding during `npm ci`. Render builds on Linux; the
+rehearsal below ran on macOS, so this specific step has never been exercised
+for this project. A failure here surfaces as a **build error** — node-gyp,
+Python, or a prebuild download — not as a configuration problem, so resist the
+urge to start adjusting environment variables. If the prebuilt binary is
+unavailable for Render's Node 22 image it falls back to compiling from source,
+which needs build tooling present in the image.
+
+**Migrations run on every boot, not as a separate step.** `createApp()` calls
+`runMigrations()` (`server/app.js:13`), so deploy and migrate are coupled: a
+migration that throws means the service does not start at all, rather than a
+separate step failing while the old version keeps serving. That is what makes
+the empty-disk rehearsal below meaningful, and it is why a new migration should
+never be deployed without running it locally against a copy of the data first.
 
 ## 3. Custom domain and DNS  ← needs the Namecheap login
 
@@ -119,6 +153,14 @@ reachable. The development database was verified untouched afterwards.
 | Manager authorization | `GET /api/inquiries` returns 200 for that session |
 | `npm run db:backup` | Writes a consistent 316 KB copy without stopping the server |
 
-**What this does not prove.** The server emits correct cookie attributes, but
-whether a *browser* accepts them cross-site needs both hosts on real HTTPS.
-That is step 5 and cannot be faked locally.
+**What this does not prove.**
+
+- **Cross-site cookie acceptance.** The server emits correct attributes, but
+  whether a *browser* honours them needs both hosts on real HTTPS. That is
+  step 5 and cannot be faked locally.
+- **The Linux native build.** The rehearsal ran on macOS with
+  `better-sqlite3` already compiled. Render's `npm ci` compiles it fresh on
+  Linux, and that path is untested here. See step 2.
+- **Anything about Render itself** — the disk mount, the region, the health
+  check wiring, or cold-start behaviour. The rehearsal validates the
+  application under Render's environment, not the platform.

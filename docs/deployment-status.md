@@ -106,8 +106,10 @@ Step-by-step commands, with the pre-flight rehearsal results, are in
 
 1. **Verify the Workspace mailbox** (5 min). Gates the email provider only; can
    run in parallel with the deploy.
-2. **Provision Render** from `render.yaml`, branch `migration/remove-base44`
-   (pushed and in sync at `6719e03`).
+2. **Provision Render** from `render.yaml`, branch `migration/remove-base44`.
+   Verify the remote has your latest work with `git ls-remote --heads origin`
+   before provisioning; a local commit that has not been pushed is invisible to
+   Render. `main` is the pre-migration baseline (`c28485e`) and is not pushed.
 3. **Add `api.openmindsstudios.com`** at Namecheap as a CNAME to Render's
    target; wait for TLS.
 4. **Bootstrap the first manager**: `npm run db:create-manager` in a Render
