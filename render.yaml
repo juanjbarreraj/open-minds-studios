@@ -7,6 +7,12 @@ services:
   - type: web
     name: openminds-api
     runtime: node
+    # PERMANENT once the service is created — Render cannot change a
+    # service's region afterwards, only recreate it elsewhere. The studio
+    # and its families are in Pittsburgh (ET), so US East keeps every
+    # dashboard round trip near ~20ms instead of ~75ms from Oregon,
+    # which is the default when this is omitted.
+    region: virginia
     # Not the free plan: free instances sleep when idle, and a 30-second cold
     # start on the login page is not acceptable for a real portal.
     plan: starter
