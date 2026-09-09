@@ -1,5 +1,15 @@
 # openmindsstudios.com — Leaving Wix, moving the domain to Namecheap
 
+> **Status stamp, 2026-09-09.** Phases 0 through 2 are complete: the domain is
+> on Namecheap (`dns1/dns2.registrar-servers.com`) and mail DNS survived the
+> move intact (Google MX, SPF, and site-verification TXT all present). Phase 3
+> is **half done** — the Netlify frontend is live at
+> https://openmindsstudios.com, but the API host in section 6 was never
+> provisioned, so `api.openmindsstudios.com` is NXDOMAIN and every
+> authenticated feature is down. Current verified state and the remaining work:
+> [`deployment-status.md`](deployment-status.md).
+
+
 **Prepared for:** Juan — Open Minds Studios
 **Date:** August 20, 2026
 

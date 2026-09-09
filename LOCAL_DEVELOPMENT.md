@@ -49,8 +49,8 @@ cp .env.example .env
 ### Cross-domain hosting note
 
 Local development is same-origin through the Vite proxy, so the defaults need
-no changes. A frontend on GitHub Pages calling a backend on an unrelated
-domain is a cross-site request, which requires all of:
+no changes. Production is not: the frontend is on Netlify and the API on
+Render, so every call is cross-site, which requires all of:
 
 - `COOKIE_SAME_SITE=none` and `COOKIE_SECURE=true` (browsers reject
   `SameSite=None` without `Secure`)
@@ -478,46 +478,55 @@ seam where a real provider gets implemented later.
   appointment and module records with it, so the API refuses and asks the
   manager to turn off approval instead.
 
-## 12. Future production migration
+## 12. Production deployment
 
-The intended production shape:
+> **Status as of 2026-09-09:** the frontend is live at
+> https://openmindsstudios.com (Netlify); the API is **not deployed**, so every
+> authenticated feature is non-functional in production. The verified state,
+> the exact failure mechanism, and the remaining work live in
+> [`docs/deployment-status.md`](docs/deployment-status.md). Read that before
+> touching deployment.
 
-- **Frontend on static hosting (for example GitHub Pages):** build with
-  `npm run build` and deploy `dist/`. Set `VITE_API_BASE_URL` to the hosted API
-  origin at build time. All API access already flows through
-  `src/api/apiClient.js`, so no other file needs changing.
-- **Backend hosted separately:** Express and SQLite cannot run on GitHub Pages.
-  Deploy `server/` to a Node host and swap SQLite for a managed database by
-  reworking `server/db/`. Routes, controllers, and services stay as they are.
+The shape in production:
 
-Checklist before going live:
+- **Frontend on Netlify.** `netlify.toml` sets the build (`npm run build`,
+  publish `dist`), the www-to-apex redirect, the SPA fallback, and cache
+  headers. `VITE_API_BASE_URL` is set in the Netlify dashboard, not in the
+  repo, and is baked into the bundle at build time.
+- **API on Render.** `render.yaml` declares the service with a persistent disk
+  at `/var/data` holding the database, uploads, backups, and exports. SQLite
+  needs a filesystem that survives restarts, which rules out serverless hosting.
+  The blueprint sets `NODE_ENV=production`, generates `SESSION_SECRET`, and
+  configures the cross-site cookie attributes.
 
-1. Set a strong `SESSION_SECRET` and run behind HTTPS (cookies switch to
-   `secure` automatically when `NODE_ENV=production`).
-2. Set `CORS_ORIGIN` to the deployed frontend origin, since the frontend and
-   API will no longer share an origin through a dev proxy.
-3. Replace the notification service with a real email provider.
-4. Implement the Google Sheets adapter in the inquiry integration service if
-   still wanted.
-5. Move uploads to object storage by reimplementing `server/services/fileService.js`.
-6. Delete the demo accounts. They exist only in the seed script.
-7. Review the rate limits, which already exist but are per process and in
-   memory; move them to a shared store if you run more than one instance.
-8. Set `COOKIE_SAME_SITE=none` and `COOKIE_SECURE=true` if the frontend and
-   API end up on unrelated domains, and serve both over HTTPS.
+Because the two live on different hosts, every API call is cross-site. That is
+why the blueprint sets `COOKIE_SAME_SITE=none`, `COOKIE_SECURE=true`, and
+`COOKIE_DOMAIN=.openmindsstudios.com`, and lists both apex and www in
+`CORS_ORIGIN`. This is the part most likely to misbehave, so verify a real
+login survives a page refresh before trusting it.
 
-### Routing note for GitHub Pages
+### First manager account
 
-The app uses `BrowserRouter`, so deep links like `/contact` require the host to
-serve `index.html` for unknown paths. The Vite dev server does this
-automatically, which is why refreshing any route works locally. GitHub Pages
-does not, and returns 404 for direct navigation to a client route. Options when
-that deployment happens:
+A fresh production database has no users, and there is deliberately no public
+route to a manager account: self-service registration produces only
+`student_parent` or `tutor`, and issuing invitations requires an existing
+manager. Break the chicken-and-egg once, in a Render shell:
 
-- Copy `dist/index.html` to `dist/404.html` at deploy time (simplest, keeps
-  clean URLs), or
-- Switch `BrowserRouter` to `HashRouter` in `src/App.jsx` (URLs gain a `#`), or
-- Serve the frontend from a host with SPA fallback support.
+```bash
+MANAGER_EMAIL=you@example.com MANAGER_PASSWORD='...' MANAGER_NAME='Your Name' \
+  npm run db:create-manager
+```
 
-If the app is served from a subpath (for example `/OpenMinds/`), also set Vite's
-`base` option and the router `basename` to match.
+Unlike `db:seed`, it deletes nothing and inserts no demo data.
+
+### Still outstanding
+
+1. Replace the notification service with a real email provider. Nothing is
+   emailed today; messages only land in `notification_outbox`.
+2. Point the contact form back at the API (see `src/api/inquirySubmit.js`).
+3. Schedule `npm run db:backup`. Nothing runs it automatically.
+4. Rate limits are per process and in memory; a second instance needs a shared
+   store.
+5. Uploads live on the Render disk. Object storage means reimplementing
+   `server/services/fileService.js`.
+6. No password reset exists; a locked-out user needs a manager.

@@ -295,3 +295,29 @@ were not modified.
 | `npm run test:ui` | 72 passed, 0 failed, 0 console errors |
 | `npm test` / `npm run test:all` | Passes end to end on a temporary stack |
 | Network requests to any Base44 host during a full browser session | zero |
+
+## Deployment status (2026-09-09)
+
+The migration and hardening work is complete and the frontend is live, but the
+application is **not yet functional in production** because the API was never
+deployed. Full verified detail, including the exact failure mechanism, lives in
+[`docs/deployment-status.md`](docs/deployment-status.md).
+
+| Layer | State |
+|---|---|
+| Frontend | Live on Netlify at https://openmindsstudios.com, building `migration/remove-base44` |
+| API | **Not provisioned.** `render.yaml` is written but unused; `api.openmindsstudios.com` is NXDOMAIN |
+| DNS / mail | Namecheap nameservers; Google MX, SPF, and verification TXT intact |
+| Contact form | Working via Netlify Forms as a deliberate stopgap; enquiries do not reach the `inquiries` table |
+
+**Failure mechanism, so it is not mis-debugged:** `VITE_API_BASE_URL` is
+already set in the Netlify dashboard, so the bundle calls the absolute
+`https://api.openmindsstudios.com/api` and the `|| '/api'` fallback was
+dead-code-eliminated. The browser therefore fails at DNS resolution and users
+see "Failed to fetch". Probing `openmindsstudios.com/api/*` returns SPA HTML or
+a 404, but the app never calls that host, so those responses are a red herring.
+
+**Test suite:** 275 API checks pass. Browser is 71 of 72 — `contact form shows
+a success state` is red because the Netlify Forms stopgap posts to `/`, which a
+local Vite server answers with the SPA shell. Test-environment mismatch, not a
+live defect; it clears when the form returns to the API.
