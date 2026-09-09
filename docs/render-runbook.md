@@ -169,27 +169,43 @@ name, with credentials in the shared password manager. Not in a developer's
 personal account, or the studio loses its backups the day that person is
 unavailable.
 
-### Monitoring: the failure that leaves no trace
+### Monitoring: OPEN, not done
 
 Silent success is fixed. The remaining silent failure is **"never ran at
 all"** — a scheduled backup that stops firing after a deploy, a restart, or a
-crash produces no error, no output, just an absence. Alerting on absence is the
-whole point.
+crash produces no error, no output, just an absence.
 
-`GET /api/health` now reports backup age:
+**A signal exists. Nothing listens to it yet.** Do not tick "backup
+monitoring" off the strength of the field below; a flag in a JSON response no
+human ever reads is the same silence one level up.
+
+`GET /api/maintenance/backup-status` (**manager-only**) reports:
 
 ```json
-{"ok":true,"backup":{"count":12,"latest_at":"2026-09-09T04:40:27.144Z","age_hours":6.2,"stale":false}}
+{"count":12,"latest_at":"2026-09-09T04:40:27.144Z","age_hours":6.2,"stale":false}
 ```
 
-`stale` is true when the newest backup is older than 26 hours (a day plus room
-for a late run) **or when no backup exists at all**. Point an uptime monitor at
-the body, not just the status code. Note that the endpoint still returns 200
-when stale, deliberately: a missing backup is an operational alarm, not a
-reason for Render to cycle a service that is otherwise serving families fine.
+`stale` is true past 26 hours — a day plus room for a late run — **or when no
+backup exists at all**. Age is read from the backup directory rather than a
+recorded timestamp, so it cannot report success for a file that is not there.
 
-Age is read from the backup directory rather than a recorded timestamp, so it
-cannot report success for a file that is not there.
+`GET /api/health` stays deliberately minimal (`{"ok":true}`) and public.
+Render's health check reads the status code, not the body, so there is nothing
+to gain by publishing more — and operational detail there would tell an
+anonymous caller when backups run and whether the operator is currently blind.
+In an application holding minors' records that is not a trade worth making.
+
+**To close this, pick one:**
+
+1. **Stopgap:** a free uptime monitor with JSON keyword matching. Note the
+   catch created by the fix above: the endpoint now needs a manager session,
+   so a simple public poller cannot read it. Either give the monitor
+   credentials or add a token-scoped variant.
+2. **Better, and the real answer:** have the backup job email on failure once
+   Resend lands (step 7 below). A push on failure beats a poll for absence,
+   and it needs no extra service.
+
+Until one of those exists, nobody finds out that backups stopped.
 
 ### Rehearsing a restore, specifically
 
@@ -215,6 +231,25 @@ rehearsing against a real off-site copy once one exists.
 Until then, `npm run db:backup` from the Render shell before any risky change
 is the honest interim. Treat it as a pre-change snapshot, not disaster
 recovery.
+
+### Retention
+
+Backups live on the same 1 GB volume as the database, so unbounded growth is a
+slow-motion self-DoS: eventually the backups fill the disk and take down the
+thing they exist to protect. At ~316 KB a day that is years away, but the
+policy is cheap so it is already in place.
+
+`createBackup()` prunes after each successful run — never before, so a pruning
+fault cannot cost you the copy just taken. The policy keeps everything from the
+last 30 days, then only the earliest backup in each calendar month. **Pre-restore
+copies are never pruned**: each is the undo for a specific destructive restore,
+they are rare, and losing one costs far more than the bytes.
+
+Verified against a synthetic year: 365 daily plus 2 pre-restore copies reduced
+to 44 files — 30 recent dailies, 12 monthlies, and both pre-restore copies
+intact. That is roughly 14 MB steady state instead of 115 MB a year.
+
+Set `BACKUP_RETENTION_DAYS=0` to disable pruning entirely.
 
 ## 7. Then, and only then
 

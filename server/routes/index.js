@@ -110,17 +110,20 @@ router.post('/invitations/:id/revoke', requireManager, h(invitations.revokeInvit
 router.get('/maintenance/orphan-files', requireSuperAdminRoute, h(files.previewOrphans));
 router.post('/maintenance/orphan-files', requireSuperAdminRoute, h(files.cleanupOrphans));
 
-// Health also reports backup age. A scheduled backup that stops running fails
-// silently by nature, so the absence has to be something a monitor can see.
-// `stale` is advisory: the threshold is a day plus a margin for a late run.
-router.get('/health', (req, res) => {
+// Deliberately minimal and public. Render's health check reads the status
+// code, not the body, so there is nothing to gain by publishing more, and
+// operational detail here would tell an anonymous caller when backups run and
+// whether the operator is currently blind. Backup state lives behind
+// requireManager instead, below.
+router.get('/health', (req, res) => res.json({ ok: true }));
+
+// Backup state: manager-only. `stale` is advisory, true past 26 hours (a day
+// plus room for a late run) or when no backup exists at all.
+router.get('/maintenance/backup-status', requireManager, (req, res) => {
   const backup = latestBackupAge();
   res.json({
-    ok: true,
-    backup: {
-      ...backup,
-      stale: backup.age_hours === null || backup.age_hours > 26,
-    },
+    ...backup,
+    stale: backup.age_hours === null || backup.age_hours > 26,
   });
 });
 

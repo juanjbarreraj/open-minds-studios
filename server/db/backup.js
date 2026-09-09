@@ -54,7 +54,17 @@ export async function createBackup({ label = 'manual', allowEmpty = false } = {}
   // Confirm the copy carries the schema before calling it a backup.
   const { tables } = verifyBackup(target);
   const { size } = fs.statSync(target);
-  return { path: target, bytes: size, tables };
+
+  // Prune only after the new copy is verified, so a pruning fault can never
+  // cost us the backup we just took.
+  let pruned = { removed: [], kept: 0 };
+  try {
+    pruned = pruneBackups();
+  } catch (err) {
+    console.error('[db] backup retention failed (the new backup is safe):', err.message);
+  }
+
+  return { path: target, bytes: size, tables, pruned: pruned.removed.length };
 }
 
 // True when the source is a populated database rather than a file SQLite
@@ -96,6 +106,7 @@ export function verifyBackup(file) {
 if (process.argv[1] && process.argv[1].endsWith('backup.js')) {
   const result = await createBackup();
   console.log(`[db] backup written to ${result.path} (${(result.bytes / 1024).toFixed(1)} KB)`);
+  if (result.pruned) console.log(`[db] retention removed ${result.pruned} older backup(s)`);
   console.log('[db] the development server does not need to be stopped: the copy is transactionally consistent.');
 }
 
@@ -121,4 +132,49 @@ export function latestBackupAge() {
     latest_at: new Date(newest).toISOString(),
     age_hours: Math.round(((Date.now() - newest) / 3_600_000) * 10) / 10,
   };
+}
+
+/**
+ * Retention. Backups share the volume with the database they protect, so
+ * unbounded growth eventually fills the disk and takes down the very thing
+ * they exist to safeguard. At ~316 KB a day that is years away on a 1 GB
+ * disk, but the failure mode is a slow self-inflicted outage, so it is worth
+ * bounding.
+ *
+ * Policy: keep everything from the last `keepDays`, and beyond that keep only
+ * the earliest backup in each calendar month. Pre-restore copies are never
+ * pruned: each one is the undo for a specific destructive restore, they are
+ * rare, and losing one costs far more than the bytes it occupies.
+ *
+ * Returns what it removed rather than logging directly, so callers decide how
+ * loud to be. Set BACKUP_RETENTION_DAYS=0 to disable.
+ */
+export function pruneBackups({ keepDays = Number(process.env.BACKUP_RETENTION_DAYS ?? 30) } = {}) {
+  if (!keepDays || !fs.existsSync(BACKUP_DIR)) return { removed: [], kept: 0 };
+
+  const entries = fs.readdirSync(BACKUP_DIR)
+    .filter((f) => f.endsWith('.db'))
+    .map((f) => ({ name: f, mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+    .sort((a, b) => a.mtime - b.mtime);
+
+  const cutoff = Date.now() - keepDays * 86_400_000;
+  const monthlyKept = new Set();
+  const removed = [];
+
+  for (const entry of entries) {
+    // Never prune the safety copy taken before a restore.
+    if (entry.name.includes('-pre-restore-')) continue;
+    if (entry.mtime >= cutoff) continue;
+
+    const month = new Date(entry.mtime).toISOString().slice(0, 7);
+    if (!monthlyKept.has(month)) {
+      // Oldest survivor in this month becomes the monthly.
+      monthlyKept.add(month);
+      continue;
+    }
+    fs.rmSync(path.join(BACKUP_DIR, entry.name), { force: true });
+    removed.push(entry.name);
+  }
+
+  return { removed, kept: entries.length - removed.length };
 }
