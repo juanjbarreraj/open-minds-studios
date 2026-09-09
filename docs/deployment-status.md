@@ -130,3 +130,30 @@ Step-by-step commands, with the pre-flight rehearsal results, are in
 9. **Merge the branch to `main`.** Housekeeping *after* provisioning: merging
    mid-provision means a failed deploy could be the blueprint, the branch, or
    the merge.
+
+## Audit: the create-on-open trap (2026-09-09)
+
+`server/db/database.js` opens with `new Database(DB_PATH)` and no
+`fileMustExist`, so **importing the module creates an empty database** at
+whatever `DATABASE_PATH` points to. 23 modules import it. Any consumer that
+checks `fs.existsSync` is therefore checking a file its own import just
+created.
+
+That behaviour is **correct and required** for the bootstrap paths — a fresh
+Render disk has no database, and `db:migrate`, `db:seed`, `db:create-manager`,
+and `db:reset` all legitimately create one. Making `database.js` refuse to
+create would break first deploy. The exposure is confined to the *read-only*
+consumers, which were audited individually:
+
+| Entry point | Behaviour on an empty database | Status |
+|---|---|---|
+| `db:migrate` | Creates and migrates | Correct by design |
+| `db:seed` | Migrates, then seeds | Correct by design |
+| `db:create-manager` | Migrates, then inserts | Correct by design |
+| `db:reset` | Deletes and recreates | Correct by design |
+| `db:backup` | **Wrote a 4 KB empty file and exited 0** | Fixed: refuses, names the likely cause |
+| `db:restore` | Aborted (the fix above over-corrected) | Fixed: an empty source is expected during recovery, so the safety copy is skipped |
+| `data:export` | Threw a raw `SQLITE_ERROR` | Fixed: same guard, with a message that names the cause |
+
+The shared predicate is `sourceHasSchema()` in `server/db/backup.js`. Anything
+added later that reads the database rather than creating it should use it.

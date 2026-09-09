@@ -161,13 +161,60 @@ Two viable shapes:
    the web service's disk either. It would need the API to expose an
    authenticated export endpoint the worker calls. More moving parts.
 
-Option 1 is the right starting point. Whichever is chosen, the job is not
-finished until a restore has actually been rehearsed from the off-site copy:
-an untested backup is a hypothesis.
+Option 1 is the right starting point.
 
-Until that exists, `npm run db:backup` from the Render shell before any risky
-change is the honest interim, and it should be treated as a pre-change
-snapshot, not as disaster recovery.
+**Ownership.** R2 needs a Cloudflare account and an API token. Like Render,
+that is an ownership decision, not a technical one: it goes in the **client's**
+name, with credentials in the shared password manager. Not in a developer's
+personal account, or the studio loses its backups the day that person is
+unavailable.
+
+### Monitoring: the failure that leaves no trace
+
+Silent success is fixed. The remaining silent failure is **"never ran at
+all"** — a scheduled backup that stops firing after a deploy, a restart, or a
+crash produces no error, no output, just an absence. Alerting on absence is the
+whole point.
+
+`GET /api/health` now reports backup age:
+
+```json
+{"ok":true,"backup":{"count":12,"latest_at":"2026-09-09T04:40:27.144Z","age_hours":6.2,"stale":false}}
+```
+
+`stale` is true when the newest backup is older than 26 hours (a day plus room
+for a late run) **or when no backup exists at all**. Point an uptime monitor at
+the body, not just the status code. Note that the endpoint still returns 200
+when stale, deliberately: a missing backup is an operational alarm, not a
+reason for Render to cycle a service that is otherwise serving families fine.
+
+Age is read from the backup directory rather than a recorded timestamp, so it
+cannot report success for a file that is not there.
+
+### Rehearsing a restore, specifically
+
+An untested backup is a hypothesis, and it is easy to rehearse the wrong
+thing. The criteria:
+
+1. **Download from the off-site copy**, never the one on the disk. Restoring
+   from the disk copy tests the path that will not exist on the day you need
+   it.
+2. **Restore into a fresh path**, never over the live database. Set
+   `DATABASE_PATH` somewhere new for the drill.
+3. **Compare per-table row counts** against the source. `npm run data:export`
+   on both prints a count per dataset, which is the quickest diff.
+4. **Confirm a known record survives** — a specific booking, a specific
+   student — not merely that tables exist. Row counts can match while content
+   is wrong.
+
+Verified on 2026-09-09 that restoring onto a fresh, empty `DATABASE_PATH`
+works: the pre-restore safety copy is skipped (correctly, there is nothing to
+copy) and 18 tables with 4 users land. That is the mechanism; it still needs
+rehearsing against a real off-site copy once one exists.
+
+Until then, `npm run db:backup` from the Render shell before any risky change
+is the honest interim. Treat it as a pre-change snapshot, not disaster
+recovery.
 
 ## 7. Then, and only then
 

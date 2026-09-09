@@ -14,14 +14,28 @@ export const BACKUP_DIR = process.env.BACKUP_DIR || path.join(__dirname, '..', '
 // Filesystem-safe UTC stamp: 2026-07-28T14-31-05-123Z
 const stamp = () => new Date().toISOString().replace(/[:.]/g, '-');
 
-export async function createBackup({ label = 'manual' } = {}) {
+/**
+ * @param {{ label?: string, allowEmpty?: boolean }} [options]
+ *   `allowEmpty` is for the safety copy taken before a restore, where an empty
+ *   source is the normal disaster-recovery case rather than a fault. It skips
+ *   the copy instead of writing a useless empty file.
+ */
+export async function createBackup({ label = 'manual', allowEmpty = false } = {}) {
   // An existence check is not enough. Importing database.js opens a
   // better-sqlite3 connection, and that CREATES the file when it is missing,
   // so by the time this runs the path always exists. Backing up the empty
   // database it just created would report success and produce a 4 KB file
   // with no tables, which is the worst possible failure for a backup tool:
   // green output, nothing to restore. Check for actual content instead.
-  assertSourceHasSchema();
+  if (!sourceHasSchema()) {
+    if (allowEmpty) return { skipped: true, reason: 'the current database is empty, so there was nothing to copy' };
+    throw new Error(
+      `The database at ${DB_PATH} is empty (no tables). Refusing to write an ` +
+      'empty backup. On a hosted deployment this usually means the process ' +
+      'cannot see the persistent disk: Render cron jobs, for example, run in ' +
+      "their own container and cannot mount the web service's disk."
+    );
+  }
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
   const target = path.join(BACKUP_DIR, `openminds-${label}-${stamp()}.db`);
@@ -43,24 +57,15 @@ export async function createBackup({ label = 'manual' } = {}) {
   return { path: target, bytes: size, tables };
 }
 
-// The source must be a populated database, not a file SQLite conjured on open.
-function assertSourceHasSchema() {
-  if (!fs.existsSync(DB_PATH)) {
-    throw new Error(`No database found at ${DB_PATH}.`);
-  }
-  const probe = new Database(DB_PATH, { readonly: true, fileMustExist: true });
+// True when the source is a populated database rather than a file SQLite
+// conjured into existence the moment database.js was imported.
+export function sourceHasSchema(file = DB_PATH) {
+  if (!fs.existsSync(file)) return false;
+  const probe = new Database(file, { readonly: true, fileMustExist: true });
   try {
-    const { n } = probe
+    return probe
       .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'")
-      .get();
-    if (n === 0) {
-      throw new Error(
-        `The database at ${DB_PATH} is empty (no tables). Refusing to write an ` +
-        'empty backup. On a hosted deployment this usually means the process ' +
-        'cannot see the persistent disk: Render cron jobs, for example, run in ' +
-        'their own container and cannot mount the web service\'s disk.'
-      );
-    }
+      .get().n > 0;
   } finally {
     probe.close();
   }
@@ -92,4 +97,28 @@ if (process.argv[1] && process.argv[1].endsWith('backup.js')) {
   const result = await createBackup();
   console.log(`[db] backup written to ${result.path} (${(result.bytes / 1024).toFixed(1)} KB)`);
   console.log('[db] the development server does not need to be stopped: the copy is transactionally consistent.');
+}
+
+/**
+ * Age of the most recent backup, for health reporting.
+ *
+ * A scheduled backup that silently stops running is invisible by design: no
+ * error, no output, just an absence. Surfacing the age turns that absence into
+ * something monitorable. Read from the directory rather than a written
+ * timestamp, so it cannot claim success for a file that is not there.
+ */
+export function latestBackupAge() {
+  if (!fs.existsSync(BACKUP_DIR)) return { count: 0, latest_at: null, age_hours: null };
+  const files = fs.readdirSync(BACKUP_DIR).filter((f) => f.endsWith('.db'));
+  if (files.length === 0) return { count: 0, latest_at: null, age_hours: null };
+
+  const newest = files
+    .map((f) => fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs)
+    .reduce((a, b) => Math.max(a, b), 0);
+
+  return {
+    count: files.length,
+    latest_at: new Date(newest).toISOString(),
+    age_hours: Math.round(((Date.now() - newest) / 3_600_000) * 10) / 10,
+  };
 }

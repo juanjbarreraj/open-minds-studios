@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import db from './database.js';
+import { sourceHasSchema } from './backup.js';
 import { serializeRows } from '../lib/serialize.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +49,15 @@ const DATASETS = {
 };
 
 export function buildExport() {
+  // Same trap as the backup path: importing database.js creates the file when
+  // it is missing, so an existence check proves nothing. Without this the
+  // failure is a raw SQLITE_ERROR that does not name the cause.
+  if (!sourceHasSchema()) {
+    throw new Error(
+      'The database has no tables, so there is nothing to export. If this is a ' +
+      'hosted environment, the process probably cannot see the persistent disk.'
+    );
+  }
   const data = {};
   for (const [name, sql] of Object.entries(DATASETS)) {
     data[name] = serializeRows(db.prepare(sql).all());

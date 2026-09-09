@@ -33,10 +33,16 @@ if (!confirm) {
   process.exit(1);
 }
 
-// Never destroy the current database without keeping a copy of it.
+// Never destroy the current database without keeping a copy of it. Restoring
+// onto a fresh, empty database is the primary disaster-recovery case, so
+// "nothing to copy" is expected there, not a failure.
 db.close();
-const safety = await createBackup({ label: 'pre-restore' });
-console.log(`[db] current database saved to ${safety.path}`);
+const safety = await createBackup({ label: 'pre-restore', allowEmpty: true });
+if (safety.skipped) {
+  console.log(`[db] no pre-restore backup taken: ${safety.reason}`);
+} else {
+  console.log(`[db] current database saved to ${safety.path}`);
+}
 
 for (const suffix of ['-wal', '-shm']) {
   fs.rmSync(`${DB_PATH}${suffix}`, { force: true });
