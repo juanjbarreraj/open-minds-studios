@@ -118,8 +118,12 @@ Step-by-step commands, with the pre-flight rehearsal results, are in
    the list, and the only place `SameSite=None` with
    `COOKIE_DOMAIN=.openmindsstudios.com` is genuinely exercised. A session must
    survive a page refresh before anything else proceeds.
-6. **Schedule `npm run db:backup`** as a Render cron job. One disk holds every
-   student and tutor record.
+6. **Off-site backups.** *Not* a Render cron job: cron containers cannot mount
+   a disk, so the job would have run against an empty database. Worse,
+   `render.yaml` currently keeps the database and its backups on the same 1 GB
+   volume, so there is no off-site copy of any student record today. The
+   backup must run inside the web service and push to object storage
+   (Cloudflare R2's free tier is ample). See the runbook.
 7. **Point the contact form back at the API** (now unblocked).
 8. **Implement an email provider** behind the existing `enqueue()` interface in
    `server/services/notificationService.js` (needs step 1).

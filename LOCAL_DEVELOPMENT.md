@@ -524,7 +524,11 @@ Unlike `db:seed`, it deletes nothing and inserts no demo data.
 1. Replace the notification service with a real email provider. Nothing is
    emailed today; messages only land in `notification_outbox`.
 2. Point the contact form back at the API (see `src/api/inquirySubmit.js`).
-3. Schedule `npm run db:backup`. Nothing runs it automatically.
+3. Off-site backups. Nothing runs `npm run db:backup` automatically, and in
+   production it writes to the *same* Render disk as the database, so it is a
+   pre-change snapshot rather than disaster recovery. A Render cron job cannot
+   fill the gap: cron containers cannot mount a disk. See
+   `docs/render-runbook.md`.
 4. Rate limits are per process and in memory; a second instance needs a shared
    store.
 5. Uploads live on the Render disk. Object storage means reimplementing

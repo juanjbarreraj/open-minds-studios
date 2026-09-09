@@ -111,15 +111,63 @@ actually set (DevTools → Application → Cookies), `CORS_ORIGIN` contains the
 exact apex origin, and both hosts are on HTTPS. `Secure` cookies are dropped
 over HTTP.
 
-## 6. Schedule the backup
+## 6. Backups — do NOT use a Render cron job
 
-Render → **New → Cron Job**, same repo and branch, same disk:
+**A cron job cannot do this.** Render's docs are explicit: *"You can't add a
+disk to a cron job service,"* and *"A persistent disk is accessible by only a
+single service instance... You can't access a service's disk from any other
+service."* A cron job runs in its own container with no view of
+`/var/data`.
 
-- Schedule: `0 7 * * *` (03:00 America/New_York; Render cron is UTC)
-- Command: `npm run db:backup`
+Verified what that would actually have done, before the guard below existed:
+the job **exited 0**, printed "backup written", and produced a **4 KB file
+containing zero tables**. Importing `database.js` opens a better-sqlite3
+connection, which *creates* the missing file, so the old existence check
+passed against a database SQLite had just conjured. Green cron job, nothing to
+restore, and no way to notice until the day it mattered.
 
-One disk holds every student and tutor record. Backups write to
-`/var/data/backups` and never overwrite.
+`createBackup()` now refuses to write a backup when the source has no tables,
+and verifies the finished copy carries the schema. If this is ever wired
+somewhere that cannot see the disk, it fails loudly and names the likely cause.
+
+### The bigger problem: this is not a backup
+
+`render.yaml` puts both on the same 1 GB volume:
+
+| | Path |
+|---|---|
+| Database | `/var/data/openminds.db` |
+| Backups | `/var/data/backups` |
+
+A timestamped copy beside the original protects against *application* mistakes
+— a bad migration, an accidental delete — and against nothing else. Disk
+corruption, an accidental service teardown, or a region incident takes the
+database and every backup together. **Say it plainly: today there is no
+off-site copy of any student or tutor record.**
+
+### What to do instead
+
+Run the backup inside the web service, which is the only process that can see
+the disk, and push the copy off-site. Cloudflare R2 has a 10 GB free tier and
+no egress charges; a 316 KB database will not approach it for years.
+
+Two viable shapes:
+
+1. **In-process schedule.** A small timer in the web service that calls
+   `createBackup()` and uploads the result. Simplest, but it dies with the
+   process and shares its memory.
+2. **A Render background worker** *(workers can mount disks, unlike cron)* —
+   but per the docs a disk is single-instance, so a worker cannot attach to
+   the web service's disk either. It would need the API to expose an
+   authenticated export endpoint the worker calls. More moving parts.
+
+Option 1 is the right starting point. Whichever is chosen, the job is not
+finished until a restore has actually been rehearsed from the off-site copy:
+an untested backup is a hypothesis.
+
+Until that exists, `npm run db:backup` from the Render shell before any risky
+change is the honest interim, and it should be treated as a pre-change
+snapshot, not as disaster recovery.
 
 ## 7. Then, and only then
 
