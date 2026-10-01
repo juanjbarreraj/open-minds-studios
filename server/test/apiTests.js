@@ -9,6 +9,9 @@ import crypto from 'node:crypto';
 const stamp = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 process.env.DATABASE_PATH = path.join(os.tmpdir(), `oms-test-${stamp}.db`);
 process.env.UPLOADS_DIR = path.join(os.tmpdir(), `oms-test-uploads-${stamp}`);
+// backup.js reads BACKUP_DIR once at import time, so it has to be set here with
+// the rest, not inside the test that uses it.
+process.env.BACKUP_DIR = path.join(os.tmpdir(), `oms-test-backups-${stamp}`);
 process.env.SESSION_SECRET = 'test-secret';
 
 const { runSeed } = await import('../db/seed.js');
@@ -1456,6 +1459,100 @@ console.log('\n== Final privacy review ==');
   check('the session cookie declares SameSite', /SameSite/i.test(setCookie), setCookie.slice(0, 120));
 }
 
+console.log('\n== Scheduled backup and the off-site copy ==');
+{
+  const { createServer } = await import('node:http');
+  const { backupIsDue, runBackupCycle, readState } = await import('../jobs/backupJob.js');
+  const { verifyBackup } = await import('../db/backup.js');
+
+  // Pure decision first: no disk, no waiting a day.
+  check('a backup is due when none exists', backupIsDue(null) === true);
+  check('a backup is due at 23 hours old', backupIsDue(23) === true);
+  check('a backup is not due at 2 hours old', backupIsDue(2) === false);
+
+  // A stand-in for R2. This proves the request we send is a well-formed object
+  // PUT carrying the real database bytes. It does NOT prove the SigV4
+  // signature satisfies Cloudflare: only real credentials can show that, and
+  // the runbook says so.
+  const received = [];
+  const r2 = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      received.push({
+        method: req.method,
+        url: req.url,
+        auth: req.headers.authorization || '',
+        body: Buffer.concat(chunks),
+      });
+      res.writeHead(200).end();
+    });
+  });
+  await new Promise((resolve) => r2.listen(0, resolve));
+  const r2Port = r2.address().port;
+
+  const r2Env = {
+    R2_ENDPOINT: `http://localhost:${r2Port}`,
+    R2_BUCKET: 'oms-backups-test',
+    R2_ACCESS_KEY_ID: 'test-key-id',
+    R2_SECRET_ACCESS_KEY: 'test-secret-key',
+    R2_PREFIX: 'db',
+  };
+  Object.assign(process.env, r2Env);
+
+  const good = await runBackupCycle({ force: true });
+  check('the cycle backs up and reports an off-site copy', good.ok === true && good.offsite === true, JSON.stringify(good));
+  check('exactly one object was uploaded', received.length === 1, `got ${received.length}`);
+
+  const upload = received[0];
+  check('the upload is a PUT into the bucket under its prefix',
+    upload?.method === 'PUT' && upload.url.startsWith('/oms-backups-test/db/'), `${upload?.method} ${upload?.url}`);
+  check('the upload is signed with SigV4',
+    /^AWS4-HMAC-SHA256 Credential=test-key-id\//.test(upload?.auth || ''), (upload?.auth || '').slice(0, 60));
+
+  // The bytes that left the process must themselves be a restorable database.
+  // Checking the local file instead would prove nothing about what was sent.
+  const landed = path.join(process.env.BACKUP_DIR, 'uploaded-copy.db');
+  fs.writeFileSync(landed, upload.body);
+  let uploadedTables = 0;
+  try { uploadedTables = verifyBackup(landed).tables; } catch (err) { uploadedTables = `threw: ${err.message}`; }
+  check('the uploaded bytes are a valid Open Minds database', uploadedTables > 10, String(uploadedTables));
+
+  const outboxRows = () => db.prepare("SELECT * FROM notification_outbox WHERE event_type = 'backup.alert' ORDER BY created_at").all();
+  check('a successful cycle raises no alert', outboxRows().length === 0, String(outboxRows().length));
+  check('the state file records the off-site key', Boolean(readState().last_offsite_at && readState().last_offsite_key));
+
+  // Now break it. A closed port is the honest version of "R2 is unreachable".
+  r2.close();
+  const failed = await runBackupCycle({ force: true });
+  check('an unreachable R2 fails the cycle at the off-site stage',
+    failed.ok === false && failed.stage === 'offsite', JSON.stringify(failed));
+  check('the local backup is still taken when the upload fails',
+    fs.readdirSync(process.env.BACKUP_DIR).filter((f) => f.endsWith('.db')).length >= 2);
+  check('a failed upload emails an alert', outboxRows().length === 1, String(outboxRows().length));
+  check('the alert names the off-site copy as the thing that is missing',
+    /off-site/i.test(outboxRows()[0]?.subject + outboxRows()[0]?.body));
+  check('the state file records the error', (readState().last_error || '').startsWith('offsite:'), readState().last_error);
+
+  // A repeat failure must not send a second email, or the next real one gets
+  // filtered along with the noise.
+  await runBackupCycle({ force: true });
+  check('repeat failures are throttled to one email', outboxRows().length === 1, String(outboxRows().length));
+
+  // Unconfigured is a supported state, not a failure, and must not alert.
+  for (const key of Object.keys(r2Env)) delete process.env[key];
+  const localOnly = await runBackupCycle({ force: true });
+  check('with R2 unconfigured the cycle succeeds locally', localOnly.ok === true && localOnly.offsite === false, JSON.stringify(localOnly));
+  check('an unconfigured off-site copy raises no alert', outboxRows().length === 1, String(outboxRows().length));
+
+  // And the manager-only endpoint has to say all of this out loud.
+  const status = await manager.get('/maintenance/backup-status');
+  check('backup status reports off-site state', status.status === 200 && status.data.offsite
+    && status.data.offsite.configured === false
+    && typeof status.data.offsite.last_upload_at === 'string', JSON.stringify(status.data));
+  check('backup status is still refused to a tutor', (await tutor.get('/maintenance/backup-status')).status === 403);
+}
+
 console.log('\n== Logout ==');
 {
   const out = await student.post('/auth/logout');
@@ -1467,6 +1564,7 @@ console.log('\n== Logout ==');
 server.close();
 db.close();
 fs.rmSync(process.env.UPLOADS_DIR, { recursive: true, force: true });
+fs.rmSync(process.env.BACKUP_DIR, { recursive: true, force: true });
 for (const suffix of ['', '-wal', '-shm']) {
   fs.rmSync(`${process.env.DATABASE_PATH}${suffix}`, { force: true });
 }

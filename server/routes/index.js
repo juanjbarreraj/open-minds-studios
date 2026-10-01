@@ -17,6 +17,8 @@ import * as progress from '../controllers/progressController.js';
 import * as invitations from '../controllers/invitationsController.js';
 import { upload } from '../services/fileService.js';
 import { latestBackupAge } from '../db/backup.js';
+import { isOffsiteConfigured } from '../db/offsite.js';
+import { readState } from '../jobs/backupJob.js';
 
 // Small helper so async controllers propagate errors to the error handler.
 const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -118,12 +120,22 @@ router.post('/maintenance/orphan-files', requireSuperAdminRoute, h(files.cleanup
 router.get('/health', (req, res) => res.json({ ok: true }));
 
 // Backup state: manager-only. `stale` is advisory, true past 26 hours (a day
-// plus room for a late run) or when no backup exists at all.
+// plus room for a late run) or when no backup exists at all. `offsite` is
+// reported separately and plainly, because a local backup sitting on the same
+// disk as the database is not protection against losing the disk, and the
+// difference should not have to be inferred.
 router.get('/maintenance/backup-status', requireManager, (req, res) => {
   const backup = latestBackupAge();
+  const state = readState();
   res.json({
     ...backup,
     stale: backup.age_hours === null || backup.age_hours > 26,
+    offsite: {
+      configured: isOffsiteConfigured(),
+      last_upload_at: state.last_offsite_at,
+      last_key: state.last_offsite_key,
+      last_error: state.last_error,
+    },
   });
 });
 

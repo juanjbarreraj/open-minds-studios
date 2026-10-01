@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
+import { startBackupSchedule } from './jobs/backupJob.js';
 
 const PORT = Number(process.env.PORT || 3001);
 if (!process.env.SESSION_SECRET) {
@@ -9,6 +10,9 @@ if (!process.env.SESSION_SECRET) {
 const app = createApp();
 const server = app.listen(PORT, () => {
   console.log(`[server] Open Minds Studios local API listening on http://localhost:${PORT}`);
+  // Started here and not in app.js: the test suites import the app directly,
+  // and importing an application must never start timers or write to a disk.
+  startBackupSchedule();
 });
 
 server.on('error', (err) => {

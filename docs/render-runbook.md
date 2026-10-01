@@ -142,52 +142,103 @@ somewhere that cannot see the disk, it fails loudly and names the likely cause.
 A timestamped copy beside the original protects against *application* mistakes
 — a bad migration, an accidental delete — and against nothing else. Disk
 corruption, an accidental service teardown, or a region incident takes the
-database and every backup together. **Say it plainly: today there is no
-off-site copy of any student or tutor record.**
+database and every backup together. **Until the R2 variables below are set,
+there is no off-site copy of any student or tutor record.**
 
-### What to do instead
+### The off-site copy: built, needs credentials
 
-Run the backup inside the web service, which is the only process that can see
-the disk, and push the copy off-site. Cloudflare R2 has a 10 GB free tier and
-no egress charges; a 316 KB database will not approach it for years.
+The code is in place. What is missing is a Cloudflare account, which is an
+ownership decision rather than a technical one.
 
-Two viable shapes:
+| Piece | File |
+|---|---|
+| Daily schedule, alerting, weekly report | `server/jobs/backupJob.js` |
+| R2 upload | `server/db/offsite.js` |
+| Manual run, for proving credentials | `npm run db:backup:offsite` |
 
-1. **In-process schedule.** A small timer in the web service that calls
-   `createBackup()` and uploads the result. Simplest, but it dies with the
-   process and shares its memory.
-2. **A Render background worker** *(workers can mount disks, unlike cron)* —
-   but per the docs a disk is single-instance, so a worker cannot attach to
-   the web service's disk either. It would need the API to expose an
-   authenticated export endpoint the worker calls. More moving parts.
+It runs **inside the web service** (started from `server/index.js`, never from
+`app.js`, so importing the app for tests cannot start timers or write files).
+That placement is forced: the web service is the only process that can see the
+disk. A Render background worker can mount a disk, unlike cron, but a disk is
+single-instance, so a worker cannot attach to *this* disk either; it would need
+an authenticated export endpoint to call, which is more moving parts for no
+gain.
 
-Option 1 is the right starting point.
+The schedule is catch-up, not wall clock: every hour it asks how old the newest
+backup is and acts if that is over 23 hours. A deploy at 03:00 therefore cannot
+skip a day, and two restarts in an hour cannot produce two backups.
 
-**Ownership.** R2 needs a Cloudflare account and an API token. Like Render,
-that is an ownership decision, not a technical one: it goes in the **client's**
-name, with credentials in the shared password manager. Not in a developer's
-personal account, or the studio loses its backups the day that person is
-unavailable.
+**Variables.** All four are needed; with any missing, the schedule still takes
+local backups and logs plainly that there is no off-site copy. It does not alert
+on that, deliberately: it is a known state, and a daily alert about something
+nobody intends to change today is an alert that gets ignored when it finally
+matters. `GET /api/maintenance/backup-status` reports it instead.
 
-### Monitoring: OPEN, not done
+| Variable | Value |
+|---|---|
+| `R2_ACCOUNT_ID` | From the Cloudflare dashboard; the endpoint is derived from it |
+| `R2_ACCESS_KEY_ID` | R2 API token, **Object Read & Write**, scoped to the one bucket |
+| `R2_SECRET_ACCESS_KEY` | Shown once at token creation |
+| `R2_BUCKET` | For example `openminds-backups` |
+| `R2_PREFIX` | Optional, default `db`. Keys are `<prefix>/YYYY-MM-DD/<filename>` |
+| `BACKUP_ALERT_EMAIL` | Optional, default `openminds@openmindsstudios.com` |
+| `BACKUP_SCHEDULE` | Optional, `on` or `off`. Default: on when `NODE_ENV=production` |
 
-Silent success is fixed. The remaining silent failure is **"never ran at
-all"** — a scheduled backup that stops firing after a deploy, a restart, or a
-crash produces no error, no output, just an absence.
+**Ownership.** The Cloudflare account and API token go in the **client's** name,
+with credentials in the shared password manager. Not in a developer's personal
+account, or the studio loses its backups the day that person is unavailable.
 
-**A signal exists. Nothing listens to it yet.** Do not tick "backup
-monitoring" off the strength of the field below; a flag in a JSON response no
-human ever reads is the same silence one level up.
+**What is tested and what is not.** The test suite runs the whole cycle against
+a local stand-in for R2 and checks that one object is PUT into the bucket under
+its prefix, that it is signed `AWS4-HMAC-SHA256`, and that the uploaded *bytes*
+are a valid Open Minds database with its schema — not merely that a local file
+was written. Also covered: the local backup still happens when the upload fails,
+a failure emails an alert, repeat failures are throttled, and an unconfigured
+deployment stays quiet and succeeds locally.
+
+**Not covered: whether Cloudflare accepts the signature.** Only real
+credentials can show that, so the first `npm run db:backup:offsite` from the
+Render shell is a required step, not a formality. A signing or permission
+problem shows up as a 403 naming the bucket.
+
+### Monitoring: the silent failure, and what now listens
+
+Silent success is fixed. The harder failure is **"never ran at all"**: a
+schedule that stops firing after a deploy, a restart, or a crash produces no
+error, no output, just an absence. Emailing on failure cannot catch it, because
+the symptom *is* the absence of mail.
+
+So there are two signals, and the second is the one that matters:
+
+1. **On failure, an email.** Subject begins `ACTION NEEDED`, to
+   `BACKUP_ALERT_EMAIL`. Throttled to one per six hours, because a broken disk
+   would otherwise send one an hour until someone writes a filter rule that
+   also hides the next real one. Backup failures and upload failures are
+   reported separately: a failed upload says plainly that the local backup is
+   fine and what is missing is the copy that survives losing the server.
+2. **Weekly, a report whether or not anything is wrong.** Subject `Weekly
+   backup report`, listing the local count, the newest backup, and the last
+   off-site key. **This is the listener for "never ran at all."** A message you
+   expect to receive converts silence into a signal: if a week passes with no
+   report, the backups are not running and nothing is going to tell you.
+   **Treat a missing report exactly like a failure notice.**
+
+Both go through the existing outbox, so with `RESEND_API_KEY` unset they are
+recorded and logged rather than lost, and nothing about them can fail a request.
 
 `GET /api/maintenance/backup-status` (**manager-only**) reports:
 
 ```json
-{"count":12,"latest_at":"2026-09-09T04:40:27.144Z","age_hours":6.2,"stale":false}
+{"count":12,"latest_at":"2026-09-09T04:40:27.144Z","age_hours":6.2,"stale":false,
+ "offsite":{"configured":true,"last_upload_at":"2026-09-09T04:40:28.001Z",
+            "last_key":"db/2026-09-09/openminds-scheduled-....db","last_error":null}}
 ```
 
 `stale` is true past 26 hours — a day plus room for a late run — **or when no
 backup exists at all**. Age is read from the backup directory rather than a
 recorded timestamp, so it cannot report success for a file that is not there.
+`offsite.configured: false` is the plain statement that local copies are all
+there is.
 
 `GET /api/health` stays deliberately minimal (`{"ok":true}`) and public.
 Render's health check reads the status code, not the body, so there is nothing
@@ -195,17 +246,10 @@ to gain by publishing more — and operational detail there would tell an
 anonymous caller when backups run and whether the operator is currently blind.
 In an application holding minors' records that is not a trade worth making.
 
-**To close this, pick one:**
-
-1. **Stopgap:** a free uptime monitor with JSON keyword matching. Note the
-   catch created by the fix above: the endpoint now needs a manager session,
-   so a simple public poller cannot read it. Either give the monitor
-   credentials or add a token-scoped variant.
-2. **Better, and the real answer:** have the backup job email on failure once
-   Resend lands (step 7 below). A push on failure beats a poll for absence,
-   and it needs no extra service.
-
-Until one of those exists, nobody finds out that backups stopped.
+**Still worth adding later:** an external uptime monitor, so that losing the
+whole service is noticed by something other than a human expecting an email. The
+status endpoint needs a manager session, so such a monitor needs either
+credentials or a token-scoped variant of the route.
 
 ### Rehearsing a restore, specifically
 
@@ -226,7 +270,9 @@ thing. The criteria:
 Verified on 2026-09-09 that restoring onto a fresh, empty `DATABASE_PATH`
 works: the pre-restore safety copy is skipped (correctly, there is nothing to
 copy) and 18 tables with 4 users land. That is the mechanism; it still needs
-rehearsing against a real off-site copy once one exists.
+rehearsing against a real off-site copy, which means downloading an object R2
+actually holds. Do that drill the same day the credentials go in, while the
+sequence is fresh, rather than discovering a gap during an incident.
 
 Until then, `npm run db:backup` from the Render shell before any risky change
 is the honest interim. Treat it as a pre-change snapshot, not disaster
@@ -282,15 +328,21 @@ reachable. The development database was verified untouched afterwards.
 | Session reuse | `GET /api/auth/me` authenticates from the cookie |
 | Manager authorization | `GET /api/inquiries` returns 200 for that session |
 | `npm run db:backup` | Writes a consistent 316 KB copy without stopping the server |
+| `npm run db:backup:offsite` | Backs up, then uploads to R2. Exits 1 and says so when R2 is unconfigured, so it cannot look like success |
 
 **What this does not prove.**
 
 - **Cross-site cookie acceptance.** The server emits correct attributes, but
   whether a *browser* honours them needs both hosts on real HTTPS. That is
   step 5 and cannot be faked locally.
-- **The Linux native build.** The rehearsal ran on macOS with
-  `better-sqlite3` already compiled. Render's `npm ci` compiles it fresh on
-  Linux, and that path is untested here. See step 2.
+- ~~**The Linux native build.**~~ **Now covered, by CI rather than by the
+  rehearsal.** `.github/workflows/verify.yml` runs `npm ci` on
+  `ubuntu-latest` with Node 22 on every push. On 2026-10-01 that install
+  succeeded and the entire API suite passed on Linux — every one of those tests
+  reads and writes through `better-sqlite3`, so the native module is exercised,
+  not merely installed. (That run was still red overall, on the single known
+  contact-form test and nothing else.) This was the largest remaining unknown
+  about Render's build step and it is no longer one.
 - **Anything about Render itself** — the disk mount, the region, the health
   check wiring, or cold-start behaviour. The rehearsal validates the
   application under Render's environment, not the platform.

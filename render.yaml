@@ -49,3 +49,25 @@ services:
         value: /var/data/backups
       - key: EXPORT_DIR
         value: /var/data/exports
+      # Off-site backups to Cloudflare R2, in the client's own account.
+      # `sync: false` means Render asks for the value rather than reading it
+      # from this file, so no credential is ever committed. Declared here even
+      # though they are not available yet: being prompted and deliberately
+      # skipping is better than not knowing the slots exist. Left unset, the
+      # schedule still takes local backups and reports that there is no
+      # off-site copy. See docs/render-runbook.md section 6.
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      # Transactional email, also set in the dashboard rather than here.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: SHEETS_WEBHOOK_URL
+        sync: false
