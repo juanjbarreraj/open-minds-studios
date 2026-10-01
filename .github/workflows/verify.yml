@@ -1,0 +1,55 @@
+# Runs the same verification command a developer runs locally.
+#
+# Deliberately one step rather than a YAML list of lint / typecheck / build /
+# api / browser. `npm run test:all` already defines what "verified" means, and
+# re-listing those stages here would create two definitions that drift: add a
+# stage to server/test/runAll.mjs and a hand-written job would keep passing on
+# the old set without anyone noticing. The runner also continues past a failed
+# stage, so one CI run reports every problem instead of only the first.
+#
+# What this does NOT do: deploy anything. Netlify builds on its own from its
+# dashboard configuration, and the API is deployed from Render. This workflow
+# only ever reports.
+name: verify
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A newer push to the same branch makes an in-flight run irrelevant.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the engines field in package.json. The API and the build
+          # both rely on Node 22 behaviour.
+          node-version: 22
+          cache: npm
+
+      # `npm ci` rather than `npm install`: the lockfile is the point. This is
+      # also where better-sqlite3 is proven to install on Linux, which is the
+      # same risk the Render deployment carries. If a prebuilt binary is not
+      # available for this Node version the compile happens here, loudly, in a
+      # place where failing costs nothing.
+      - run: npm ci
+
+      # The browser suite drives real Chromium. Only that one browser, and
+      # --with-deps for the system libraries the GitHub runner lacks.
+      - run: npx playwright install --with-deps chromium
+
+      # lint, typecheck, build, API suite, then the browser suite against a
+      # temporary stack the runner starts and tears down itself. No secrets and
+      # no network services: the Sheets webhook and Resend are both unset here,
+      # which is a supported state, so CI exercises the degraded paths too.
+      - run: npm run test:all
